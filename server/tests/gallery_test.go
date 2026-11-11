@@ -93,7 +93,7 @@ func TestPublicGallery(t *testing.T) {
 		if it.ID == fake.TrashedID || it.ID == fake.LockedID || it.ID == fake.MotionID {
 			t.Errorf("hidden asset %s listed", it.ID)
 		}
-		if it.TakenAt == nil || len(*it.TakenAt) != 10 {
+		if it.TakenAt == nil || len(*it.TakenAt) != len("2024-07-01T18:00:00") {
 			t.Errorf("%s takenAt %v", it.ID, it.TakenAt)
 		}
 		if !strings.HasPrefix(it.ThumbURL, "/media/key/"+fake.PublicKey+"/"+it.ID+"/thumb") {
@@ -122,7 +122,7 @@ func TestDatesAndDescriptions(t *testing.T) {
 	e2 := harness.Start(t, harness.Options{})
 	r = e2.Visitor().Get(t, "/api/shares/key/"+fake.PublicKey+"/assets/"+fake.PhotoID)
 	r.JSON(t, &d)
-	if d.Description != nil || d.TakenAt == nil || *d.TakenAt != "2024-07-01" {
+	if d.Description != nil || d.TakenAt == nil || *d.TakenAt != "2024-07-01T18:00:00" {
 		t.Fatalf("default asset detail: %s", r.Body)
 	}
 	e2.Immich.ResetRequests()

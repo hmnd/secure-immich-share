@@ -29,7 +29,8 @@ type ShareItem struct {
 	Kind      string  `json:"kind" validate:"oneof=image video live"`
 	Ratio     float64 `json:"ratio"`
 	Thumbhash *string `json:"thumbhash"`
-	// TakenAt is the local date (YYYY-MM-DD) or null.
+	// TakenAt is the local date and time (YYYY-MM-DDTHH:MM:SS, no time
+	// zone) or null.
 	TakenAt    *string        `json:"takenAt"`
 	ThumbURL   string         `json:"thumbUrl"`
 	PreviewURL string         `json:"previewUrl"`

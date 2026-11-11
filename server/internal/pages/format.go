@@ -10,17 +10,25 @@ import (
 	"github.com/hmnd/secure-immich-share/server/internal/httpapi/contract"
 )
 
-// formatDate formats a YYYY-MM-DD local date as "1 July 2024"; empty if it
-// isn't one.
-func formatDate(date *string) string {
-	if date == nil {
+// formatTaken formats a YYYY-MM-DDTHH:MM:SS local time with layout; empty
+// if it isn't one.
+func formatTaken(takenAt *string, layout string) string {
+	if takenAt == nil {
 		return ""
 	}
-	t, err := time.Parse(time.DateOnly, *date)
+	t, err := time.Parse("2006-01-02T15:04:05", *takenAt)
 	if err != nil {
 		return ""
 	}
-	return t.Format("2 January 2006")
+	return t.Format(layout)
+}
+
+// formatDate formats a local time as "1 July 2024".
+func formatDate(takenAt *string) string { return formatTaken(takenAt, "2 January 2006") }
+
+// formatDateTime formats a local time as "1 July 2024 at 18:00".
+func formatDateTime(takenAt *string) string {
+	return formatTaken(takenAt, "2 January 2006 at 15:04")
 }
 
 func isVideo(it contract.ShareItem) bool { return it.Kind == "video" }

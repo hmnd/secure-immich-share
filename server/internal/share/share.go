@@ -67,7 +67,8 @@ type Item struct {
 	Kind      ItemKind
 	Ratio     float64
 	Thumbhash *string
-	// TakenAt is the local date (YYYY-MM-DD), or empty when unknown.
+	// TakenAt is the local date and time (YYYY-MM-DDTHH:MM:SS, no time
+	// zone), or empty when unknown.
 	TakenAt string
 	// LiveVideoID is the motion part of a live photo.
 	LiveVideoID string
@@ -368,7 +369,7 @@ func (s *Service) listing(ctx context.Context, link immich.SharedLink, auth immi
 				continue
 			}
 			it := Item{ID: a.ID, Kind: itemKind(a.Type == "IMAGE", a.LivePhotoVideoID), Ratio: ratio(a.Width, a.Height),
-				Thumbhash: a.Thumbhash, TakenAt: localDate(a.LocalDateTime)}
+				Thumbhash: a.Thumbhash, TakenAt: localTime(a.LocalDateTime)}
 			if it.Kind == "" {
 				continue
 			}
@@ -410,7 +411,7 @@ func (s *Service) albumItems(ctx context.Context, albumID string, auth immich.Au
 			}
 			kind := itemKind(ba.IsImage[i], ba.LivePhotoVideoID[i])
 			it := Item{ID: id, Kind: kind, Ratio: sane(ba.Ratio[i]), Thumbhash: ba.Thumbhash[i],
-				TakenAt: offsetDate(ba.FileCreatedAt[i], ba.LocalOffsetHours[i])}
+				TakenAt: offsetTime(ba.FileCreatedAt[i], ba.LocalOffsetHours[i])}
 			if ba.LivePhotoVideoID[i] != nil {
 				it.LiveVideoID = *ba.LivePhotoVideoID[i]
 			}
@@ -467,23 +468,26 @@ func parseTime(s string) time.Time {
 	return t
 }
 
-// localDate takes Immich's localDateTime (local wall time marked UTC) and
-// keeps the date only.
-func localDate(s string) string {
+// localTimeLayout is a local date and time without a time zone.
+const localTimeLayout = "2006-01-02T15:04:05"
+
+// localTime takes Immich's localDateTime (local wall time marked UTC) and
+// drops the zone and fractional seconds.
+func localTime(s string) string {
 	t, err := time.Parse(time.RFC3339Nano, s)
 	if err != nil {
 		return ""
 	}
-	return t.Format(time.DateOnly)
+	return t.Format(localTimeLayout)
 }
 
-// offsetDate applies the timeline's localOffsetHours to fileCreatedAt.
-func offsetDate(fileCreatedAt string, offsetHours float64) string {
+// offsetTime applies the timeline's localOffsetHours to fileCreatedAt.
+func offsetTime(fileCreatedAt string, offsetHours float64) string {
 	t, err := time.Parse(time.RFC3339Nano, fileCreatedAt)
 	if err != nil {
 		return ""
 	}
-	return t.UTC().Add(time.Duration(offsetHours * float64(time.Hour))).Format(time.DateOnly)
+	return t.UTC().Add(time.Duration(offsetHours * float64(time.Hour))).Format(localTimeLayout)
 }
 
 func nonEmpty(s string) *string {

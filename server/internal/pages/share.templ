@@ -126,7 +126,7 @@ templ viewer(s Share, p Photo) {
 		</div>
 		<div class="viewer-bar bottom">
 			<div class="info">
-				if date := formatDate(it.TakenAt); date != "" {
+				if date := formatDateTime(it.TakenAt); date != "" {
 					<p class="date">{ date }</p>
 				}
 				if p.Description != nil && *p.Description != "" {

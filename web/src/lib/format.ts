@@ -7,12 +7,22 @@ const dateFormat = new Intl.DateTimeFormat('en-GB', {
 	timeZone: 'UTC'
 });
 
-/** Formats a `YYYY-MM-DD` local date as "1 July 2024"; null if it isn't one. */
-export function formatDate(date: string | null): string | null {
-	const match = date ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(date) : null;
+const LOCAL_TIME = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):\d{2}$/;
+
+/** Formats a `YYYY-MM-DDTHH:MM:SS` local time as "1 July 2024"; null if it isn't one. */
+export function formatDate(takenAt: string | null): string | null {
+	const match = takenAt ? LOCAL_TIME.exec(takenAt) : null;
 	if (!match) return null;
 	const [, y, m, d] = match;
 	return dateFormat.format(Date.UTC(Number(y), Number(m) - 1, Number(d)));
+}
+
+/** Formats a `YYYY-MM-DDTHH:MM:SS` local time as "1 July 2024 at 18:00"; null if it isn't one. */
+export function formatDateTime(takenAt: string | null): string | null {
+	const match = takenAt ? LOCAL_TIME.exec(takenAt) : null;
+	if (!match) return null;
+	const [, y, m, d, hh, mm] = match;
+	return `${dateFormat.format(Date.UTC(Number(y), Number(m) - 1, Number(d)))} at ${hh}:${mm}`;
 }
 
 function isVideo(item: ShareItem): boolean {

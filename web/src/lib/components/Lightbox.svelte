@@ -24,7 +24,7 @@
 	} from '#lib/api/index.ts';
 	import Icon from '#lib/components/Icon.svelte';
 	import { download } from '#lib/download.ts';
-	import { altText, formatDate } from '#lib/format.ts';
+	import { altText, formatDateTime } from '#lib/format.ts';
 	import { ItemSave, type ItemSaveState } from '#lib/item-save.svelte.ts';
 	import { Lazy } from '#lib/lazy.svelte.ts';
 	import { LivePhoto } from '#lib/live-photo.svelte.ts';
@@ -268,7 +268,7 @@
 		return action(state, 'Play live photo', mdiMotionPlayOutline);
 	});
 
-	const date = $derived(formatDate(detail.value?.takenAt ?? item.takenAt));
+	const date = $derived(formatDateTime(detail.value?.takenAt ?? item.takenAt));
 	const description = $derived(detail.value?.description ?? null);
 	function background(item: ShareItem): string {
 		const hash = item.thumbhash ? thumbHashToDataURL(item.thumbhash) : null;

@@ -584,7 +584,7 @@ func viewer(s Share, p Photo) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		if date := formatDate(it.TakenAt); date != "" {
+		if date := formatDateTime(it.TakenAt); date != "" {
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "<p class=\"date\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
