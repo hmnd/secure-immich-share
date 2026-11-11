@@ -42,6 +42,8 @@
 	const shown = $derived(photos.isClosed && (count > 0 || saving !== null || downloading !== null));
 
 	const reducedMotion = new MediaQuery('(prefers-reduced-motion: reduce)');
+	/** Small screens dock the bar at the bottom, within thumb reach. */
+	const atBottom = new MediaQuery('(max-width: 39.99rem)');
 
 	function onbeforeunload(event: BeforeUnloadEvent) {
 		if (busy) event.preventDefault();
@@ -50,13 +52,13 @@
 
 <svelte:window {onbeforeunload} />
 
-<!-- Always there, so holdScroll keeps the page still as the sheet comes and goes. -->
-<div class="top-bar" {@attach holdScroll}>
+<!-- Always there, so holdScroll keeps the page still as the sheet comes and goes at the top. -->
+<div class="top-bar" {@attach !atBottom.current && holdScroll}>
 	{#if shown}
 		<div
 			class="sheet"
 			in:fly={{
-				y: '-100%',
+				y: atBottom.current ? '100%' : '-100%',
 				opacity: 1,
 				duration: reducedMotion.current ? 0 : 200,
 				easing: cubicOut
@@ -177,6 +179,21 @@
 	}
 
 	@media (max-width: 39.99rem) {
+		/* Last in the body's column, after the footer, so it sticks to the bottom on any page length. */
+		.top-bar {
+			top: auto;
+			bottom: 0;
+			order: 1;
+		}
+
+		.sheet {
+			padding-top: 0;
+			padding-bottom: env(safe-area-inset-bottom);
+			border-top: 1px solid var(--color-border);
+			border-bottom: 0;
+			box-shadow: 0 -2px 8px rgb(0 0 0 / 0.15);
+		}
+
 		.buttons {
 			flex: 1 1 100%;
 		}
