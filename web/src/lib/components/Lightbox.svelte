@@ -535,10 +535,6 @@
 		animation.cancel();
 	}
 
-	function onStageClick(event: MouseEvent) {
-		if (!zoom.zoomed && hit(event) === 'backdrop') close();
-	}
-
 	function onStageDblClick(event: MouseEvent) {
 		// Touches double tap through the zoom's own pointer handling. A zoomed photo captures the
 		// mouse to pan, so its double clicks land on the stage.
@@ -631,12 +627,11 @@
 		</div>
 	</div>
 
-	<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
 		class={['viewer-stage', 'stage', { zoomed: zoom.zoomed, panning: zoom.panning }]}
 		{@attach bindViewport}
 		{@attach ownTouches}
-		onclick={onStageClick}
 		ondblclick={onStageDblClick}
 		{onpointerdown}
 		{onpointermove}
