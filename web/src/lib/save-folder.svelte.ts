@@ -2,7 +2,7 @@ import { createSubscriber } from 'svelte/reactivity';
 import type { LinkKind, ShareItem } from '#lib/api/index.ts';
 import { fetchPrepared, preparer } from '#lib/media-loader.svelte.ts';
 import { withRetries } from '#lib/retry.ts';
-import { CONCURRENCY, fileName, inOrder, mediaType, saveVariants } from '#lib/saving.ts';
+import { CONCURRENCY, fileName, inOrder, keepAwake, mediaType, saveVariants } from '#lib/saving.ts';
 
 export type SaveFolderState =
 	| { kind: 'idle' }
@@ -224,24 +224,4 @@ async function sizeOf(dir: FileSystemDirectoryHandle, name: string): Promise<num
 	} catch {
 		return null;
 	}
-}
-
-/**
- * Keeps the screen on until `signal` aborts. The browser drops the lock whenever the page is
- * hidden, so it's requested again each time the page comes back.
- */
-async function keepAwake(signal: AbortSignal): Promise<void> {
-	let lock: WakeLockSentinel | null = null;
-	const request = async () => {
-		if (signal.aborted || document.visibilityState !== 'visible') return;
-		try {
-			lock = await navigator.wakeLock.request('screen');
-			if (signal.aborted) void lock.release();
-		} catch {
-			lock = null;
-		}
-	};
-	document.addEventListener('visibilitychange', () => void request(), { signal });
-	signal.addEventListener('abort', () => void lock?.release(), { once: true });
-	await request();
 }

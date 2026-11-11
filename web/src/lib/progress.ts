@@ -1,6 +1,7 @@
 import { fileSummary, plural } from '#lib/format.ts';
 import type { MediaState } from '#lib/media-loader.svelte.ts';
 import type { SaveAllState } from '#lib/save-all.svelte.ts';
+import type { SaveDownloadsState } from '#lib/save-downloads.svelte.ts';
 import type { SaveFolderState } from '#lib/save-folder.svelte.ts';
 import type { SaveJob } from '#lib/save-job.ts';
 import type { ZipState } from '#lib/zip-job.svelte.ts';
@@ -88,8 +89,41 @@ function batchBanner(state: SaveAllState): Banner | null {
 	}
 }
 
+function downloadsBanner(state: SaveDownloadsState): Banner | null {
+	switch (state.kind) {
+		case 'idle':
+			return null;
+		case 'saving':
+			return {
+				kind: 'working',
+				title: `Downloading ${state.done} of ${state.total}`,
+				progress: state,
+				resumes: true
+			};
+		case 'done':
+			return {
+				kind: 'done',
+				title: 'Saved to Downloads',
+				detail: skippedNote(state.skipped, 'downloaded')
+			};
+		case 'failed':
+			return { kind: 'failed', title: state.message };
+		default:
+			return state satisfies never;
+	}
+}
+
 export function saveBanner(job: SaveJob): Banner | null {
-	return job.method === 'folder' ? folderBanner(job.state) : batchBanner(job.state);
+	switch (job.method) {
+		case 'folder':
+			return folderBanner(job.state);
+		case 'share-sheet':
+			return batchBanner(job.state);
+		case 'downloads':
+			return downloadsBanner(job.state);
+		default:
+			return job satisfies never;
+	}
 }
 
 export function zipBanner(state: ZipState): Banner | null {
