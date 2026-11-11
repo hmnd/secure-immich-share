@@ -30,23 +30,42 @@ func (s *Server) registerMedia(api *fuego.Server) {
 		{sanitize.VariantVideo, "getVideo", "video/mp4"},
 		{sanitize.VariantDownload, "getDownload", "*/*"},
 	}
+	version := fuego.OptionQuery("v", "The item's version from its thumbUrl or previewUrl; "+
+		"a current one makes the response cacheable for long")
 	for _, rt := range routes {
-		fuego.GetStd(api, "/media/{kind}/{ref}/{id}/"+string(rt.variant), s.serveMedia(rt.variant),
-			opID(rt.op), tags("media"), kind, binary(rt.mime))
+		opts := []fuego.RouteOption{opID(rt.op), tags("media"), kind, binary(rt.mime)}
+		if rt.variant == sanitize.VariantThumb || rt.variant == sanitize.VariantPreview {
+			opts = append(opts, version)
+		}
+		fuego.GetStd(api, "/media/{kind}/{ref}/{id}/"+string(rt.variant), s.serveMedia(rt.variant), opts...)
 	}
 	fuego.GetStd(api, "/media/{kind}/{ref}/zip/{zipId}/photos.zip", s.serveZip, opID("getZipFile"), tags("media"), kind,
 		binary("application/zip"))
 }
 
-func (s *Server) mediaHeaders(w http.ResponseWriter, state share.State, h *cache.Handle) {
+func (s *Server) mediaHeaders(w http.ResponseWriter, state share.State, h *cache.Handle, current bool) {
 	hdr := w.Header()
 	hdr.Set("Content-Type", h.V.ContentType())
 	hdr.Set("ETag", `"`+h.ETag+`"`)
-	if state == share.StatePublic {
-		hdr.Set("Cache-Control", "private, max-age=300")
-	} else {
+	switch {
+	case state != share.StatePublic:
 		hdr.Set("Cache-Control", "no-store")
+	case current:
+		hdr.Set("Cache-Control", "private, max-age=2592000, immutable")
+	default:
+		hdr.Set("Cache-Control", "private, max-age=300")
 	}
+}
+
+// currentVersion reports whether a thumb or preview request carries the
+// item's media.ListingVersion, so its URL changes with its bytes.
+func currentVersion(r *http.Request, sh *share.Share, id string, variant sanitize.Variant) bool {
+	if variant != sanitize.VariantThumb && variant != sanitize.VariantPreview {
+		return false
+	}
+	it, ok := sh.Item(id)
+	ver := media.ListingVersion(it)
+	return ok && ver != "" && r.URL.Query().Get("v") == ver
 }
 
 // noWriteDeadline lifts the write deadline for long downloads.
@@ -83,7 +102,7 @@ func (s *Server) serveMedia(variant sanitize.Variant) http.HandlerFunc {
 			return
 		}
 		defer f.Close()
-		s.mediaHeaders(w, v.res.State, h)
+		s.mediaHeaders(w, v.res.State, h, currentVersion(r, sh, id, variant))
 		if variant == sanitize.VariantDownload {
 			n := slices.Index(sh.Order, id) + 1
 			w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%03d.%s"`, n, h.V.Ext()))

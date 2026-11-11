@@ -151,8 +151,10 @@ func TestLinkKinds(t *testing.T) {
 			t.Errorf("%s view differs", c.kind)
 		}
 		for i, it := range res.Share.Items {
-			if it.ID != byKey.Share.Items[i].ID ||
-				it.ThumbURL != "/media/"+c.kind+"/"+url.PathEscape(c.ref)+"/"+it.ID+"/thumb" {
+			path, query, _ := strings.Cut(it.ThumbURL, "?")
+			_, keyQuery, _ := strings.Cut(byKey.Share.Items[i].ThumbURL, "?")
+			if it.ID != byKey.Share.Items[i].ID || query != keyQuery ||
+				path != "/media/"+c.kind+"/"+url.PathEscape(c.ref)+"/"+it.ID+"/thumb" {
 				t.Errorf("%s item %d: %+v", c.kind, i, it)
 			}
 		}

@@ -296,7 +296,12 @@ export type GetPreviewData = {
         ref: string;
         id: string;
     };
-    query?: never;
+    query?: {
+        /**
+         * The item's version from its thumbUrl or previewUrl; a current one makes the response cacheable for long
+         */
+        v?: string;
+    };
     url: '/media/{kind}/{ref}/{id}/preview';
 };
 
@@ -329,7 +334,12 @@ export type GetThumbData = {
         ref: string;
         id: string;
     };
-    query?: never;
+    query?: {
+        /**
+         * The item's version from its thumbUrl or previewUrl; a current one makes the response cacheable for long
+         */
+        v?: string;
+    };
     url: '/media/{kind}/{ref}/{id}/thumb';
 };
 

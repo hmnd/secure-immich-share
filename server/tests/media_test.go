@@ -124,7 +124,11 @@ func TestEveryVariantVerifies(t *testing.T) {
 			if ct, ok := contentType[it.ID+"/"+variant]; ok && r.Header.Get("Content-Type") != ct {
 				t.Errorf("%s %s: Content-Type %q, want %q", it.ID, variant, r.Header.Get("Content-Type"), ct)
 			}
-			if r.Header.Get("ETag") == "" || r.Header.Get("Cache-Control") != "private, max-age=300" {
+			cacheControl := "private, max-age=300"
+			if strings.Contains(u, "?v=") {
+				cacheControl = "private, max-age=2592000, immutable"
+			}
+			if r.Header.Get("ETag") == "" || r.Header.Get("Cache-Control") != cacheControl {
 				t.Errorf("%s: caching headers %v", u, r.Header)
 			}
 			if variant == "download" && !strings.HasPrefix(r.Header.Get("Content-Disposition"), `attachment; filename="00`) {
@@ -145,6 +149,39 @@ func TestEveryVariantVerifies(t *testing.T) {
 	}
 	if n := e.Immich.Count("GET", "/api/assets/"+fake.RawID+"/original"); n != 0 {
 		t.Errorf("RAW original fetched %d times", n)
+	}
+}
+
+// TestVersionedMediaCaching: thumbs and previews of items with a thumbhash
+// get versioned URLs, cacheable for long only at the current version.
+func TestVersionedMediaCaching(t *testing.T) {
+	t.Parallel()
+	e := harness.Start(t, harness.Options{})
+	v := e.Visitor()
+	_, res := getShare(t, v, "key", fake.PublicKey)
+	items := map[string]shareItem{}
+	for _, it := range res.Share.Items {
+		items[it.ID] = it
+	}
+	heic, photo := items[fake.HEICID], items[fake.PhotoID]
+	if !strings.Contains(heic.ThumbURL, "?v=") || !strings.Contains(heic.PreviewURL, "?v=") {
+		t.Fatalf("item with a thumbhash has unversioned URLs: %+v", heic)
+	}
+	if strings.Contains(photo.ThumbURL, "?") || strings.Contains(photo.PreviewURL, "?") {
+		t.Errorf("item without a thumbhash has versioned URLs: %+v", photo)
+	}
+	path, _, _ := strings.Cut(heic.ThumbURL, "?")
+	for u, want := range map[string]string{
+		heic.ThumbURL:     "private, max-age=2592000, immutable",
+		heic.PreviewURL:   "private, max-age=2592000, immutable",
+		path:              "private, max-age=300",
+		path + "?v=stale": "private, max-age=300",
+		photo.ThumbURL:    "private, max-age=300",
+	} {
+		r := v.Get(t, u)
+		if r.StatusCode != 200 || r.Header.Get("Cache-Control") != want {
+			t.Errorf("%s: %d Cache-Control %q, want %q", u, r.StatusCode, r.Header.Get("Cache-Control"), want)
+		}
 	}
 }
 

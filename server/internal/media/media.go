@@ -6,10 +6,13 @@ package media
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"time"
 
@@ -143,6 +146,21 @@ func Variants(sh *share.Share, it share.Item) []sanitize.Variant {
 		}
 	}
 	return out
+}
+
+// ListingVersion identifies an item's thumb and preview from listing data
+// alone (Immich regenerates the thumbhash with them), so their URLs can
+// change with their bytes. It is "" when the item has no thumbhash.
+func ListingVersion(it share.Item) string {
+	if it.Thumbhash == nil {
+		return ""
+	}
+	h := sha256.New()
+	for _, part := range []string{PipelineVersion, *it.Thumbhash, strconv.FormatFloat(it.Ratio, 'g', -1, 64)} {
+		h.Write([]byte(part))
+		h.Write([]byte{0})
+	}
+	return hex.EncodeToString(h.Sum(nil))[:16]
 }
 
 // plan is what a request resolves to: the cache key and the job.

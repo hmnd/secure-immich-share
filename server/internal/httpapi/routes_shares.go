@@ -101,6 +101,14 @@ func (v visit) mediaURL(id string, variant sanitize.Variant) string {
 	return v.base() + "/" + id + "/" + string(variant)
 }
 
+// versioned adds a media.ListingVersion to a thumb or preview URL.
+func versioned(u, ver string) string {
+	if ver == "" {
+		return u
+	}
+	return u + "?v=" + ver
+}
+
 func (s *Server) view(v visit, sh *share.Share) contract.ShareView {
 	out := contract.ShareView{
 		Kind: string(sh.Kind), Title: sh.Title, Description: sh.Description, ExpiresAt: sh.ExpiresAt,
@@ -109,10 +117,12 @@ func (s *Server) view(v visit, sh *share.Share) contract.ShareView {
 	}
 	for _, id := range sh.Order {
 		it := sh.Items[id]
+		ver := media.ListingVersion(it)
 		item := contract.ShareItem{
 			ID: id, Kind: string(it.Kind), Ratio: it.Ratio, Thumbhash: it.Thumbhash,
-			ThumbURL: v.mediaURL(id, sanitize.VariantThumb), PreviewURL: v.mediaURL(id, sanitize.VariantPreview),
-			Variants: []contract.MediaVariant{},
+			ThumbURL:   versioned(v.mediaURL(id, sanitize.VariantThumb), ver),
+			PreviewURL: versioned(v.mediaURL(id, sanitize.VariantPreview), ver),
+			Variants:   []contract.MediaVariant{},
 		}
 		if s.deps.Cfg.ShowDates && it.TakenAt != "" {
 			item.TakenAt = &it.TakenAt

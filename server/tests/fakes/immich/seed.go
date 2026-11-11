@@ -70,7 +70,8 @@ func (f *Immich) Seed(t sanitizetest.TB) {
 		LocalDateTime: day(1), Description: "Jane at home",
 		Original: dirty("jpeg-gps"), Preview: dirty("webp-xmp"), Thumbnail: dirty("jpeg-gps")})
 	f.AddAsset(Asset{ID: HEICID, Type: "IMAGE", Mime: "image/heic", Checksum: "heic", Width: 320, Height: 240,
-		LocalDateTime: day(2), Original: dirty("heic-gps"), Fullsize: djpg, Preview: djpg, Thumbnail: dwebp})
+		LocalDateTime: day(2), Thumbhash: "1QcSHQRnh493V4dIh4eXh1h4kJUI",
+		Original: dirty("heic-gps"), Fullsize: djpg, Preview: djpg, Thumbnail: dwebp})
 	f.AddAsset(Asset{ID: VideoID, Type: "VIDEO", Mime: "video/mp4", Checksum: "video", Width: 320, Height: 240,
 		LocalDateTime: day(3), Playback: dirty("mp4-gps-track"), Preview: djpg, Thumbnail: dwebp})
 	f.AddAsset(Asset{ID: LiveID, Type: "IMAGE", Mime: "image/heic", Checksum: "live", Width: 240, Height: 320,

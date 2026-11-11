@@ -209,6 +209,10 @@ export const zGetPreviewPath = z.object({
     id: z.string()
 });
 
+export const zGetPreviewQuery = z.object({
+    v: z.string().optional()
+});
+
 /**
  * OK
  */
@@ -222,6 +226,10 @@ export const zGetThumbPath = z.object({
     ]),
     ref: z.string(),
     id: z.string()
+});
+
+export const zGetThumbQuery = z.object({
+    v: z.string().optional()
 });
 
 /**

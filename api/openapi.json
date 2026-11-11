@@ -848,6 +848,14 @@
             }
           },
           {
+            "description": "The item's version from its thumbUrl or previewUrl; a current one makes the response cacheable for long",
+            "in": "query",
+            "name": "v",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "in": "path",
             "name": "ref",
             "required": true,
@@ -917,6 +925,14 @@
                 "slug",
                 "token"
               ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "The item's version from its thumbUrl or previewUrl; a current one makes the response cacheable for long",
+            "in": "query",
+            "name": "v",
+            "schema": {
               "type": "string"
             }
           },
