@@ -8,6 +8,7 @@
 		mdiClose,
 		mdiDownload,
 		mdiLoading,
+		mdiMagnifyMinusOutline,
 		mdiMagnifyPlusOutline,
 		mdiMotionPauseOutline,
 		mdiMotionPlayOutline,
@@ -33,6 +34,7 @@
 	import type { Selection } from '#lib/selection.svelte.ts';
 	import { canSaveToPhone } from '#lib/share-sheet.ts';
 	import { thumbHashToDataURL } from '#lib/thumbhash.ts';
+	import { Zoom, type Hit } from '#lib/zoom.svelte.ts';
 
 	interface Props {
 		kind: LinkKind;
@@ -62,7 +64,10 @@
 
 	type Swiping = { kind: 'swiping'; id: number; x: number; samples: Sample[]; offset: number };
 
-	/** A touch on the stage: undecided, swiping between photos, or left to the page (vertical). */
+	/**
+	 * A touch on the stage: undecided, swiping between photos, or ignored (vertical). Idle while
+	 * the photo's zoom follows the pointers.
+	 */
 	type Gesture =
 		| { kind: 'idle' }
 		| { kind: 'pending'; id: number; x: number; y: number; t: number }
@@ -100,6 +105,7 @@
 	}
 
 	let dialog: HTMLDialogElement | null = null;
+	let viewport: HTMLDivElement | null = null;
 	let track: HTMLDivElement | null = null;
 	let gesture = $state.raw<Gesture>({ kind: 'idle' });
 	/** The last pointer's type: hover styles are for mice only, as phones keep :hover after a tap. */
@@ -118,6 +124,15 @@
 		})
 	);
 	const media = $derived(createMedia(kind, ref, item, index));
+	/** Each photo opens fitted. */
+	const zoom = $derived(
+		new Zoom({
+			ratio: item.ratio,
+			area: () => viewport?.getBoundingClientRect() ?? null,
+			onzoom: sharpen
+		})
+	);
+	const zoomable = $derived(item.kind !== 'video');
 
 	const detail = $derived.by(() => {
 		const { id } = item;
@@ -231,11 +246,17 @@
 			: `${index + 1} / ${items.length}`
 	);
 
-	const fullAction = $derived(
-		fullState && fullState.kind !== 'ready'
-			? action(fullState, 'Full size', mdiMagnifyPlusOutline)
-			: null
-	);
+	const zoomAction = $derived.by((): Action | null => {
+		if (!zoomable) return null;
+		if (!zoom.zoomed) return { label: 'Zoom in', icon: mdiMagnifyPlusOutline, disabled: false };
+		const loading = fullState?.kind === 'checking' || fullState?.kind === 'preparing';
+		return {
+			label: 'Zoom out',
+			icon: loading ? mdiLoading : mdiMagnifyMinusOutline,
+			disabled: false,
+			busy: loading
+		};
+	});
 	function saveAction(state: ItemSaveState): Action {
 		const label = 'Save to phone';
 		switch (state.kind) {
@@ -287,24 +308,43 @@
 	};
 
 	/**
-	 * Cancels the moves of a sideways swipe. Otherwise Chrome may treat the swipe as a scroll,
-	 * fling it on release and swallow the next tap (say, on Select) to stop the fling.
+	 * Cancels the moves of the lightbox's own gestures. Otherwise Chrome may treat a swipe as a
+	 * scroll, fling it on release and swallow the next tap (say, on Select) to stop the fling,
+	 * and Safari may zoom the page on a pinch.
 	 */
-	const ownSwipes: Attachment<HTMLElement> = (node) =>
+	const ownTouches: Attachment<HTMLElement> = (node) =>
 		on(
 			node,
 			'touchmove',
 			(event) => {
 				const touch = event.changedTouches[0];
-				const sideways =
+				const owned =
+					event.touches.length > 1 ||
+					zoom.active ||
 					gesture.kind === 'swiping' ||
 					(gesture.kind === 'pending' &&
 						touch !== undefined &&
 						Math.abs(touch.clientX - gesture.x) > Math.abs(touch.clientY - gesture.y));
-				if (sideways && event.cancelable) event.preventDefault();
+				if (owned && event.cancelable) event.preventDefault();
 			},
 			{ passive: false }
 		);
+
+	const bindViewport: Attachment<HTMLDivElement> = (node) => {
+		viewport = node;
+		const off = on(
+			node,
+			'wheel',
+			(event) => {
+				if (zoomable) zoom.wheel(event);
+			},
+			{ passive: false }
+		);
+		return () => {
+			off();
+			viewport = null;
+		};
+	};
 
 	const bindTrack: Attachment<HTMLDivElement> = (node) => {
 		track = node;
@@ -354,21 +394,31 @@
 		);
 	}
 
-	function onpointerdown(event: PointerEvent) {
-		if (event.pointerType !== 'touch') return;
-		if (!event.isPrimary) {
-			// A second finger: leave pinch-zoom to the browser.
-			if (gesture.kind === 'swiping') void settle(gesture.offset, 0);
-			else if (gesture.kind !== 'settling') gesture = { kind: 'idle' };
+	function hit(event: Event): Hit {
+		const target = event.target instanceof Element ? event.target : null;
+		if (target?.closest('button')) return 'button';
+		return target?.closest('.frame') ? 'photo' : 'backdrop';
+	}
+
+	function onpointerdown(event: PointerEvent & { currentTarget: HTMLElement }) {
+		if (gesture.kind === 'settling') return;
+		if (gesture.kind !== 'swiping' && zoomable && zoom.down(event, hit(event))) {
+			gesture = { kind: 'idle' };
 			return;
 		}
-		if (gesture.kind === 'settling') return;
+		if (zoom.active || event.pointerType !== 'touch') return;
+		if (!event.isPrimary) {
+			// A second finger that can't pinch: the swipe gives way.
+			if (gesture.kind === 'swiping') void settle(gesture.offset, 0);
+			else gesture = { kind: 'idle' };
+			return;
+		}
 		const { pointerId: id, clientX: x, clientY: y, timeStamp: t } = event;
 		gesture = { kind: 'pending', id, x, y, t };
 	}
 
 	function onpointermove(event: PointerEvent & { currentTarget: HTMLElement }) {
-		if (!follows(event)) return;
+		if (zoom.move(event) || !follows(event)) return;
 		if (gesture.kind === 'pending') {
 			const dx = event.clientX - gesture.x;
 			const dy = event.clientY - gesture.y;
@@ -398,7 +448,7 @@
 	}
 
 	function onpointerup(event: PointerEvent) {
-		if (!follows(event)) return;
+		if (zoom.up(event) || !follows(event)) return;
 		if (gesture.kind !== 'swiping' || !track) {
 			gesture = { kind: 'idle' };
 			return;
@@ -413,7 +463,7 @@
 	}
 
 	function onpointercancel(event: PointerEvent) {
-		if (!follows(event)) return;
+		if (zoom.up(event, true) || !follows(event)) return;
 		if (gesture.kind === 'swiping') void settle(gesture.offset, 0);
 		else gesture = { kind: 'idle' };
 	}
@@ -448,15 +498,32 @@
 	}
 
 	function onStageClick(event: MouseEvent) {
-		if (event.target instanceof Element && !event.target.closest('.frame, button')) close();
+		if (!zoom.zoomed && hit(event) === 'backdrop') close();
+	}
+
+	function onStageDblClick(event: MouseEvent) {
+		// Touches double tap through the zoom's own pointer handling. A zoomed photo captures the
+		// mouse to pan, so its double clicks land on the stage.
+		if (zoomable && pointer !== 'touch' && (zoom.zoomed || hit(event) === 'photo')) {
+			zoom.toggle({ x: event.clientX, y: event.clientY });
+		}
 	}
 
 	function toggleSelected() {
 		selection?.toggle(index);
 	}
 
-	function showFull() {
-		void media.full?.start();
+	function toggleZoom() {
+		zoom.toggle();
+	}
+
+	/** Loads the full-size photo for a closer look, unless there's none to be had. */
+	function sharpen() {
+		const full = media.full;
+		if (!full) return;
+		const { state } = full;
+		if (state.kind === 'failed' && state.message === NOT_AVAILABLE) return;
+		void full.start();
 	}
 
 	function toggleLive() {
@@ -514,8 +581,8 @@
 			{#if liveAction}
 				{@render actionButton(liveAction, toggleLive)}
 			{/if}
-			{#if fullAction}
-				{@render actionButton(fullAction, showFull)}
+			{#if zoomAction}
+				{@render actionButton(zoomAction, toggleZoom)}
 			{/if}
 			{#if downloadAction}
 				{@render actionButton(downloadAction, save)}
@@ -528,9 +595,11 @@
 
 	<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 	<div
-		class="viewer-stage stage"
-		{@attach ownSwipes}
+		class={['viewer-stage', 'stage', { zoomed: zoom.zoomed, panning: zoom.panning }]}
+		{@attach bindViewport}
+		{@attach ownTouches}
 		onclick={onStageClick}
+		ondblclick={onStageDblClick}
 		{onpointerdown}
 		{onpointermove}
 		{onpointerup}
@@ -547,9 +616,11 @@
 					inert={!current}
 				>
 					<div
-						class="frame"
+						class={['frame', { smooth: current && zoom.smooth }]}
 						style:--ratio={slide.item.ratio}
 						style:background-image={background(slide.item)}
+						style:translate={current ? `${zoom.x}px ${zoom.y}px` : undefined}
+						style:scale={current ? zoom.scale : undefined}
 					>
 						{#if shown.kind === 'video'}
 							<!-- svelte-ignore a11y_media_has_caption -->
@@ -662,9 +733,17 @@
 	}
 
 	.stage {
-		touch-action: pan-y pinch-zoom;
+		touch-action: none;
 		user-select: none;
 		-webkit-user-select: none;
+	}
+
+	.stage.zoomed {
+		cursor: grab;
+	}
+
+	.stage.panning {
+		cursor: grabbing;
 	}
 
 	.track {
@@ -686,6 +765,18 @@
 		background-position: center;
 		background-repeat: no-repeat;
 		background-size: cover;
+	}
+
+	.frame.smooth {
+		transition:
+			scale 250ms cubic-bezier(0.2, 0, 0, 1),
+			translate 250ms cubic-bezier(0.2, 0, 0, 1);
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.frame.smooth {
+			transition: none;
+		}
 	}
 
 	.status {
