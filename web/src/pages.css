@@ -9,8 +9,8 @@
 	flex-direction: column;
 	align-items: center;
 	justify-content: center;
+	flex: 1;
 	gap: var(--space-4);
-	min-height: 100dvh;
 	padding: var(--space-6);
 	text-align: center;
 }
@@ -452,7 +452,7 @@
 .unlock {
 	display: grid;
 	place-items: center;
-	min-height: 100dvh;
+	flex: 1;
 	padding: var(--space-6) var(--space-4);
 }
 
@@ -484,4 +484,17 @@
 	color: var(--color-danger);
 	font-size: 0.875rem;
 	text-align: center;
+}
+
+.site-footer {
+	margin-top: auto;
+	padding: var(--space-4);
+	padding-bottom: max(var(--space-4), env(safe-area-inset-bottom));
+	color: var(--color-muted);
+	font-size: 0.75rem;
+	text-align: center;
+}
+
+.site-footer a {
+	color: inherit;
 }

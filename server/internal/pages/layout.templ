@@ -1,5 +1,7 @@
 package pages
 
+import "github.com/hmnd/secure-immich-share/server/internal/buildinfo"
+
 templ document(a Assets, h Head) {
 	<!DOCTYPE html>
 	<html lang="en">
@@ -25,6 +27,9 @@ templ document(a Assets, h Head) {
 		</head>
 		<body>
 			{ children... }
+			<footer class="site-footer">
+				Shared with <a href={ templ.SafeURL(buildinfo.RepoURL) } target="_blank" rel="noreferrer">secure-immich-share</a> { buildinfo.Version }
+			</footer>
 		</body>
 	</html>
 }
