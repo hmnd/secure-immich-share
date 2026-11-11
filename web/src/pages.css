@@ -419,6 +419,11 @@
 	object-fit: contain;
 }
 
+/* Hide the browser's alt text over the placeholder while the full image loads. */
+.viewer .frame img {
+	color: transparent;
+}
+
 .viewer .nav {
 	position: absolute;
 	top: 50%;
