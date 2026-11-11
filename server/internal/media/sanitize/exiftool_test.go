@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hmnd/secure-immich-share/server/internal/media/sanitize"
 	"github.com/hmnd/secure-immich-share/server/internal/media/sanitize/sanitizetest"
@@ -74,6 +75,28 @@ func TestExifCancelled(t *testing.T) {
 	}
 	if _, err := r.Exif(context.Background(), "-j", sample); err != nil {
 		t.Fatalf("after cancel: %v", err)
+	}
+}
+
+func TestExifIdleWorkersStop(t *testing.T) {
+	t.Parallel()
+	tools := sanitizetest.LookTools(t)
+	r := &sanitize.Runner{Exiftool: tools.Exiftool, TmpDir: t.TempDir(), Workers: 2, IdleTimeout: 50 * time.Millisecond}
+	t.Cleanup(r.Close)
+	sample := sanitizetest.Clean(t, "clean.jpg")
+	if _, err := r.Exif(context.Background(), "-j", sample); err != nil {
+		t.Fatal(err)
+	}
+	if n := r.IdleExifWorkers(); n != 1 {
+		t.Fatalf("idle workers after a call: %d", n)
+	}
+	for deadline := time.Now().Add(5 * time.Second); r.IdleExifWorkers() > 0; time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("idle worker not stopped")
+		}
+	}
+	if _, err := r.Exif(context.Background(), "-j", sample); err != nil {
+		t.Fatalf("after idle stop: %v", err)
 	}
 }
 

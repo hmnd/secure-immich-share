@@ -27,6 +27,9 @@ const (
 // DefaultTimeout bounds each tool call and fetch when no timeout is set.
 const DefaultTimeout = 120 * time.Second
 
+// DefaultIdleTimeout is how long an idle exiftool process is kept.
+const DefaultIdleTimeout = time.Minute
+
 // Runner runs exiftool and ffmpeg. Every process gets an empty environment
 // and a working directory inside TmpDir, and every call is bounded by
 // Timeout. exiftool runs on pooled -stay_open processes; ffmpeg gets a new
@@ -40,6 +43,9 @@ type Runner struct {
 	Timeout  time.Duration // default DefaultTimeout
 	// Workers is how many idle exiftool processes are kept (default: CPUs).
 	Workers int
+	// IdleTimeout stops exiftool processes idle this long (default
+	// DefaultIdleTimeout).
+	IdleTimeout time.Duration
 
 	mu     sync.Mutex
 	pool   *exifPool
@@ -57,7 +63,11 @@ func (r *Runner) exifPool() (*exifPool, error) {
 		if workers <= 0 {
 			workers = runtime.NumCPU()
 		}
-		r.pool = &exifPool{path: r.exiftool(), dir: r.TmpDir, maxIdle: workers}
+		idleTTL := r.IdleTimeout
+		if idleTTL <= 0 {
+			idleTTL = DefaultIdleTimeout
+		}
+		r.pool = &exifPool{path: r.exiftool(), dir: r.TmpDir, maxIdle: workers, idleTTL: idleTTL}
 	}
 	return r.pool, nil
 }

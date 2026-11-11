@@ -18,3 +18,15 @@ func (r *Runner) Check(ctx context.Context, path string) ([]string, error) {
 func (r *Runner) Exif(ctx context.Context, args ...string) ([]byte, error) {
 	return r.exif(ctx, args...)
 }
+
+func (r *Runner) IdleExifWorkers() int {
+	r.mu.Lock()
+	p := r.pool
+	r.mu.Unlock()
+	if p == nil {
+		return 0
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return len(p.idle)
+}

@@ -9,21 +9,27 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 // exifPool keeps exiftool processes in -stay_open mode so a call skips
 // perl's startup and module loading, most of an image's sanitize time.
 // exiftool treats every -execute as a separate command line with a fresh
-// ExifTool object, so options don't carry over between calls.
+// ExifTool object, so options don't carry over between calls. Workers idle
+// for idleTTL are stopped, so a quiet server doesn't hold a perl process
+// per CPU.
 type exifPool struct {
 	path, dir string
 	maxIdle   int
+	idleTTL   time.Duration
 
 	mu     sync.Mutex
-	idle   []*exifWorker
+	idle   []*exifWorker // longest idle first
+	reaper *time.Timer
 	closed bool
 }
 
@@ -51,7 +57,11 @@ func (p *exifPool) get() (*exifWorker, error) {
 func (p *exifPool) put(w *exifWorker) {
 	p.mu.Lock()
 	if !p.closed && w.uses < exifWorkerUses && len(p.idle) < p.maxIdle {
+		w.idleSince = time.Now()
 		p.idle = append(p.idle, w)
+		if p.reaper == nil {
+			p.reaper = time.AfterFunc(p.idleTTL, p.reap)
+		}
 		p.mu.Unlock()
 		return
 	}
@@ -59,10 +69,34 @@ func (p *exifPool) put(w *exifWorker) {
 	w.kill()
 }
 
+func (p *exifPool) reap() {
+	p.mu.Lock()
+	now := time.Now()
+	n := 0
+	for n < len(p.idle) && now.Sub(p.idle[n].idleSince) >= p.idleTTL {
+		n++
+	}
+	stale := p.idle[:n]
+	p.idle = slices.Clone(p.idle[n:])
+	if len(p.idle) > 0 && !p.closed {
+		p.reaper.Reset(p.idle[0].idleSince.Add(p.idleTTL).Sub(now))
+	} else {
+		p.reaper = nil
+	}
+	p.mu.Unlock()
+	for _, w := range stale {
+		w.kill()
+	}
+}
+
 func (p *exifPool) close() {
 	p.mu.Lock()
 	idle := p.idle
 	p.idle, p.closed = nil, true
+	if p.reaper != nil {
+		p.reaper.Stop()
+		p.reaper = nil
+	}
 	p.mu.Unlock()
 	for _, w := range idle {
 		w.kill()
@@ -93,11 +127,12 @@ func (p *exifPool) start() (*exifWorker, error) {
 }
 
 type exifWorker struct {
-	cmd    *exec.Cmd
-	stdin  io.WriteCloser
-	stdout *bufio.Reader
-	stderr *bufio.Reader
-	uses   int
+	cmd       *exec.Cmd
+	stdin     io.WriteCloser
+	stdout    *bufio.Reader
+	stderr    *bufio.Reader
+	uses      int
+	idleSince time.Time
 }
 
 type exifResult struct {
