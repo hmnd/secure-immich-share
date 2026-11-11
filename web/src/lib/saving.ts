@@ -15,6 +15,8 @@ const EXTENSIONS: Record<string, string> = {
 
 export const isTouch = () => matchMedia('(pointer: coarse)').matches;
 
+export const isAndroid = () => /Android/i.test(navigator.userAgent);
+
 /** Whether a touch device can write straight into a folder the visitor picks (Chrome on Android). */
 export function canSaveToFolder(): boolean {
 	return typeof window.showDirectoryPicker === 'function' && isTouch();

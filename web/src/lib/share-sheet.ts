@@ -1,5 +1,5 @@
 import { fetchPrepared, type Prepare } from '#lib/media-loader.svelte.ts';
-import { isTouch, mediaType } from '#lib/saving.ts';
+import { isAndroid, isTouch, mediaType } from '#lib/saving.ts';
 
 /** What one share sheet accepts. Files wait in memory until shared. */
 export interface ShareLimits {
@@ -24,9 +24,12 @@ export function shareLimits(): ShareLimits {
 	return 'userAgentData' in navigator ? CHROMIUM : OTHER;
 }
 
-/** Whether files can go to the system share sheet ("Save Image" on iOS) on a touch device. */
+/**
+ * Whether files can go to the system share sheet ("Save Image" on iOS) on a touch device.
+ * Android's share sheet has no way to save to the device, so it gets plain downloads instead.
+ */
 export function canSaveToPhone(): boolean {
-	if (typeof navigator.canShare !== 'function' || !isTouch()) return false;
+	if (typeof navigator.canShare !== 'function' || !isTouch() || isAndroid()) return false;
 	return navigator.canShare({ files: [new File([], 'probe.jpg', { type: 'image/jpeg' })] });
 }
 
