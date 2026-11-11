@@ -3,6 +3,7 @@
 //
 //	secure-immich-share serve
 //	secure-immich-share mint <immich share URL | key | slug>
+//	secure-immich-share version
 package main
 
 import (
@@ -14,18 +15,23 @@ import (
 	"syscall"
 
 	"github.com/hmnd/secure-immich-share/server/internal/app"
+	"github.com/hmnd/secure-immich-share/server/internal/buildinfo"
 	"github.com/hmnd/secure-immich-share/server/internal/config"
 	"github.com/hmnd/secure-immich-share/server/internal/immich"
 	"github.com/hmnd/secure-immich-share/server/internal/linkref"
 )
 
-const usage = "usage: secure-immich-share serve | mint <immich share URL | key | slug>"
+const usage = "usage: secure-immich-share serve | mint <immich share URL | key | slug> | version"
 
 func main() {
 	args := os.Args[1:]
 	cmd := "serve"
 	if len(args) > 0 {
 		cmd, args = args[0], args[1:]
+	}
+	if cmd == "version" {
+		fmt.Println("secure-immich-share", buildinfo.Version)
+		return
 	}
 	cfg, err := config.Load()
 	if err != nil {

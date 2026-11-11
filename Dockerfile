@@ -17,8 +17,11 @@ COPY server/go.mod server/go.sum ./
 RUN go mod download
 COPY server/ ./
 COPY --from=web /src/web/build/ ./internal/webassets/dist/
+ARG VERSION=dev
 RUN --mount=type=cache,target=/root/.cache/go-build \
-    go build -trimpath -ldflags "-s -w" -o /out/secure-immich-share ./cmd/secure-immich-share
+    go build -trimpath \
+    -ldflags "-s -w -X github.com/hmnd/secure-immich-share/server/internal/buildinfo.Version=${VERSION}" \
+    -o /out/secure-immich-share ./cmd/secure-immich-share
 
 # --- app image: exiftool (perl) and ffmpeg run as child processes, so no distroless ---
 FROM alpine:3.24@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf AS app

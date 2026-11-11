@@ -45,9 +45,14 @@ jobs:
           ARCH: ${{ matrix.arch }}
         run: |
           image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          version="sha-${GITHUB_SHA::7}"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            version="$GITHUB_REF_NAME"
+          fi
           docker buildx create --use --driver docker-container
           docker buildx build \
             --platform "linux/$ARCH" \
+            --build-arg "VERSION=$version" \
             --label "org.opencontainers.image.source=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
             --label "org.opencontainers.image.revision=$GITHUB_SHA" \
             --output "type=image,name=$image,push-by-digest=true,name-canonical=true,push=true" \

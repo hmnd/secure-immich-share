@@ -13,6 +13,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/hmnd/secure-immich-share/server/internal/buildinfo"
 	"github.com/hmnd/secure-immich-share/server/internal/clock"
 	"github.com/hmnd/secure-immich-share/server/internal/config"
 	"github.com/hmnd/secure-immich-share/server/internal/httpapi"
@@ -176,7 +177,8 @@ func (a *App) Run(ctx context.Context) error {
 	} else {
 		a.life.fire(EventStarted)
 	}
-	a.logger.Info("listening", "addr", ln.Addr().String(), "state", a.life.get(), "immich", version)
+	a.logger.Info("listening", "addr", ln.Addr().String(), "state", a.life.get(),
+		"version", buildinfo.Version, "immich", version)
 
 	ticker := time.NewTicker(a.probe)
 	defer ticker.Stop()
