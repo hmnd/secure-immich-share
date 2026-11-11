@@ -108,7 +108,7 @@ func TestExifPySamples(t *testing.T) {
 				}
 			}
 
-			out := r.Process(ctx, p, sanitize.OpStrip)
+			out := r.Process(ctx, p, sanitize.OpStrip, sanitize.Taken{})
 			if reason, ok := sampleRejected[name]; ok {
 				if _, isRejected := out.(sanitize.Rejected); !isRejected {
 					t.Fatalf("%s: got %T %v, want Rejected", reason, out, out)

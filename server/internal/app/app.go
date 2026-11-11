@@ -95,7 +95,7 @@ func New(ctx context.Context, cfg config.Config, opts Options) (*App, error) {
 		CacheMaxBytes: cfg.CacheMaxBytes, Concurrency: cfg.SanitizeConcurrency, Queue: cfg.SanitizeQueue,
 		Timeout: cfg.SanitizeTimeout, FailedTTL: cfg.FailedTTL, PrewarmVideos: cfg.PrewarmVideos,
 		PrewarmImages: cfg.PrewarmImages, PrewarmConcurrency: cfg.PrewarmConcurrency, PrewarmTTL: cfg.PrewarmTTL,
-		ZipJobs: cfg.ZipJobs, ZipConcurrency: cfg.ZipConcurrency, ZipTTL: cfg.ZipTTL,
+		ZipJobs: cfg.ZipJobs, ZipConcurrency: cfg.ZipConcurrency, ZipTTL: cfg.ZipTTL, KeepDates: cfg.ShowDates,
 		Runner: runner, Shares: shares, Clock: opts.Clock, Logger: opts.Logger,
 	})
 	if err != nil {

@@ -25,8 +25,9 @@ import (
 	"github.com/hmnd/secure-immich-share/server/internal/share"
 )
 
-// PipelineVersion is part of every cache key: bump it whenever the
-// sanitizer's commands, allowlist or chains change.
+// PipelineVersion is part of every cache key (with a suffix when dates are
+// kept): bump it whenever the sanitizer's commands, allowlist or chains
+// change.
 const PipelineVersion = "3"
 
 var (
@@ -56,6 +57,8 @@ type Options struct {
 	ZipJobs            int
 	ZipConcurrency     int
 	ZipTTL             time.Duration
+	// KeepDates writes the date taken into downloads and full-size images.
+	KeepDates bool
 
 	Runner *sanitize.Runner // the tool paths to use
 	Shares *share.Service
@@ -73,6 +76,8 @@ type Service struct {
 	wg      sync.WaitGroup
 	zips    *zips
 	prewarm *prewarmer
+
+	pipeline string // cache pipeline: PipelineVersion and the date mode
 }
 
 // New opens the cache (cleaning tmp/ and recovering committed entries).
@@ -88,10 +93,15 @@ func New(o Options) (*Service, error) {
 	runner := &sanitize.Runner{
 		Exiftool: o.Runner.Exiftool, FFmpeg: o.Runner.FFmpeg,
 		TmpDir: filepath.Join(o.CacheDir, "tmp"), Timeout: o.Timeout, Workers: o.Concurrency,
+		KeepDates: o.KeepDates,
+	}
+	pipeline := PipelineVersion
+	if o.KeepDates {
+		pipeline += "+dates"
 	}
 	c, err := cache.Open(cache.Options{
 		Dir: o.CacheDir, MaxBytes: o.CacheMaxBytes, Concurrency: o.Concurrency, Queue: o.Queue,
-		PrewarmConcurrency: o.PrewarmConcurrency, FailedTTL: o.FailedTTL, Pipeline: PipelineVersion,
+		PrewarmConcurrency: o.PrewarmConcurrency, FailedTTL: o.FailedTTL, Pipeline: pipeline,
 		Runner: runner, Clock: o.Clock, Logger: o.Logger,
 	})
 	if err != nil {
@@ -101,7 +111,7 @@ func New(o Options) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	m := &Service{o: o, cache: c, fetch: f, runner: runner}
+	m := &Service{o: o, pipeline: pipeline, cache: c, fetch: f, runner: runner}
 	m.base, m.cancel = context.WithCancel(context.Background())
 	m.zips = newZips(m)
 	m.prewarm = newPrewarmer(o.Logger)
@@ -188,8 +198,12 @@ func (m *Service) plan(ctx context.Context, sh *share.Share, assetID string, v s
 	if len(chain) == 0 {
 		return plan{}, ErrNotFound
 	}
-	key := cache.KeyFor(source.ID, source.Checksum, source.UpdatedAt, v, PipelineVersion)
-	return plan{key: key, job: m.job(sh, assetID, it.LiveVideoID, v, chain)}, nil
+	var taken sanitize.Taken
+	if m.o.KeepDates && (v == sanitize.VariantFull || v == sanitize.VariantDownload) {
+		taken = still.Taken
+	}
+	key := cache.KeyFor(source.ID, source.Checksum, source.UpdatedAt, v, m.pipeline)
+	return plan{key: key, job: m.job(sh, assetID, it.LiveVideoID, v, chain, taken)}, nil
 }
 
 func mapShareErr(err error) error {
@@ -199,7 +213,7 @@ func mapShareErr(err error) error {
 	return ErrNotFound
 }
 
-func (m *Service) job(sh *share.Share, assetID, motionID string, v sanitize.Variant, chain []sanitize.Step) cache.Job {
+func (m *Service) job(sh *share.Share, assetID, motionID string, v sanitize.Variant, chain []sanitize.Step, taken sanitize.Taken) cache.Job {
 	auth := sh.Auth()
 	shareID := sh.ID
 	return func(ctx context.Context, nextStep func()) cache.Result {
@@ -211,7 +225,7 @@ func (m *Service) job(sh *share.Share, assetID, motionID string, v sanitize.Vari
 		}()
 		for i := 0; i < len(chain); {
 			step := chain[i]
-			outcome := m.attempt(ctx, auth, assetID, motionID, step, fetched)
+			outcome := m.attempt(ctx, auth, assetID, motionID, step, taken, fetched)
 			dec := sanitize.Next(i, len(chain), outcome)
 			if r, ok := outcome.(sanitize.Rejected); ok {
 				m.o.Logger.Warn("media: verification rejected", "asset", linkref.Hash8(assetID), "variant", v,
@@ -238,7 +252,7 @@ func (m *Service) job(sh *share.Share, assetID, motionID string, v sanitize.Vari
 
 // attempt fetches the step's source (once per job) and processes it, each
 // bounded by the sanitize timeout.
-func (m *Service) attempt(ctx context.Context, auth immich.Auth, assetID, motionID string, step sanitize.Step, fetched map[sanitize.Source]string) sanitize.Outcome {
+func (m *Service) attempt(ctx context.Context, auth immich.Auth, assetID, motionID string, step sanitize.Step, taken sanitize.Taken, fetched map[sanitize.Source]string) sanitize.Outcome {
 	in, ok := fetched[step.Source]
 	if !ok {
 		var err error
@@ -261,7 +275,7 @@ func (m *Service) attempt(ctx context.Context, auth immich.Auth, assetID, motion
 		}
 		fetched[step.Source] = in
 	}
-	return m.runner.Process(ctx, in, step.Op)
+	return m.runner.Process(ctx, in, step.Op, taken)
 }
 
 // Get returns the verified file for a variant, waiting for its job. The

@@ -103,6 +103,7 @@ type Asset struct {
 	Checksum         string    `json:"checksum"`
 	UpdatedAt        time.Time `json:"updatedAt"`
 	LocalDateTime    string    `json:"localDateTime"`
+	FileCreatedAt    string    `json:"fileCreatedAt"`
 	LivePhotoVideoID *string   `json:"livePhotoVideoId"`
 	Thumbhash        *string   `json:"thumbhash"`
 	Width            *int      `json:"width"`

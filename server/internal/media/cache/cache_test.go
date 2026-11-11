@@ -64,7 +64,7 @@ func (r *rig) stripJob(t *testing.T, runs *atomic.Int32, hold <-chan struct{}) c
 				return cache.Result{Fail: sanitize.FailTool}
 			}
 		}
-		switch o := r.runner.Process(ctx, src, sanitize.OpStrip).(type) {
+		switch o := r.runner.Process(ctx, src, sanitize.OpStrip, sanitize.Taken{}).(type) {
 		case sanitize.Verified:
 			return cache.Result{Verified: o}
 		default:

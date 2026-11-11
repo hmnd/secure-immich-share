@@ -15,6 +15,7 @@ visitor ──HTTPS──> reverse proxy ──> secure-immich-share ──priva
 - RAW, DNG and TIFF originals are never served; Immich's full-size or preview render is used instead. Edited images are served from the full-size render, since originals lack the edits.
 - No Immich API key is used; Immich is read through the share key or slug only.
 - Pages and JSON contain only allowlisted fields: no filenames, camera, location or people. Dates are local date only (`SHOW_DATES`); descriptions are off by default (`SHOW_DESCRIPTIONS`).
+- With `SHOW_DATES`, full-size images and downloads carry the date taken from Immich so phone galleries sort saved files correctly: images get EXIF `DateTimeOriginal` in local time without a time zone, videos the UTC creation time. Nothing else about the date (sub-seconds, offsets, other EXIF dates) is kept. PNGs stay undated.
 
 ## Immich setup
 

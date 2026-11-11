@@ -140,7 +140,7 @@ func Start(t *testing.T, opts Options) *Env {
 	e := &Env{
 		BaseURL: base, Immich: f, App: a, Config: cfg, Clock: c, Logs: logs, cancel: cancel,
 		done: make(chan error, 1), conf: conf,
-		Runner: &sanitize.Runner{Exiftool: tools.Exiftool, FFmpeg: tools.FFmpeg, TmpDir: t.TempDir()},
+		Runner: &sanitize.Runner{Exiftool: tools.Exiftool, FFmpeg: tools.FFmpeg, TmpDir: t.TempDir(), KeepDates: cfg.ShowDates},
 	}
 	go func() { e.done <- a.Run(ctx) }()
 	t.Cleanup(func() {

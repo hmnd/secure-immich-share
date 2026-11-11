@@ -213,8 +213,32 @@ func matches(pattern, name string) bool {
 	return err == nil && ok
 }
 
+// exifDate is a bare date and time, the only form of the dates Process
+// writes.
+var exifDate = matchesRe(`^[0-9]{4}:[0-9]{2}:[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$`)
+
+var imageDates = []rule{{pattern: "ExifIFD:DateTimeOriginal", value: exifDate}}
+
+var videoDates = []rule{
+	{pattern: "QuickTime:CreateDate", value: exifDate},
+	{pattern: "QuickTime:ModifyDate", value: exifDate},
+	{pattern: "Track*:TrackCreateDate", value: exifDate},
+	{pattern: "Track*:TrackModifyDate", value: exifDate},
+	{pattern: "Track*:MediaCreateDate", value: exifDate},
+	{pattern: "Track*:MediaModifyDate", value: exifDate},
+}
+
+// dateRules allow the date taken that Process writes when dates are kept.
+// They take precedence over the forbidden patterns.
+var dateRules = map[Container][]rule{
+	ContainerJPEG: imageDates, ContainerWebP: imageDates,
+	ContainerHEIC: imageDates, ContainerAVIF: imageDates,
+	ContainerMP4: videoDates, ContainerMOV: videoDates,
+}
+
 // checkTags returns the group:tag names that fail verification for kind.
-func checkTags(k Container, tags map[string]any) []string {
+// dates allows the dates in dateRules.
+func checkTags(k Container, tags map[string]any, dates bool) []string {
 	rules, ok := allowlists[k]
 	if !ok {
 		return []string{fmt.Sprintf("File:Kind(%s)", k)}
@@ -222,6 +246,9 @@ func checkTags(k Container, tags map[string]any) []string {
 	var bad []string
 	for name, val := range tags {
 		if name == "SourceFile" {
+			continue
+		}
+		if dates && allowed(dateRules[k], name, val) {
 			continue
 		}
 		if isForbidden(name) || !allowed(rules, name, val) {

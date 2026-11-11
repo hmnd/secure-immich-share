@@ -18,7 +18,7 @@ import (
 
 func verifiedBase(t *testing.T, r *sanitize.Runner, clean string, op sanitize.Op) string {
 	t.Helper()
-	out := r.Process(context.Background(), sanitizetest.Clean(t, clean), op)
+	out := r.Process(context.Background(), sanitizetest.Clean(t, clean), op, sanitize.Taken{})
 	v, ok := out.(sanitize.Verified)
 	if !ok {
 		t.Fatalf("clean %s: %T %v", clean, out, out)

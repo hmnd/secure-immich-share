@@ -46,6 +46,8 @@ type Runner struct {
 	// IdleTimeout stops exiftool processes idle this long (default
 	// DefaultIdleTimeout).
 	IdleTimeout time.Duration
+	// KeepDates lets the dates Process writes from Taken pass the verifier.
+	KeepDates bool
 
 	mu     sync.Mutex
 	pool   *exifPool
@@ -207,10 +209,40 @@ func (r *Runner) CheckTools(ctx context.Context) (exiftoolVer, ffmpegVer string,
 
 var ffmpegVersion = regexp.MustCompile(`ffmpeg version n?((\d+)[^\s]*|N-[^\s]+)`)
 
-// Process applies op to the file at in and returns the outcome. On Verified
-// the output is a new file in TmpDir; on any other outcome no output
-// remains. The input file is left in place (the caller owns it).
-func (r *Runner) Process(ctx context.Context, in string, op Op) Outcome {
+// Taken is when an asset was taken, written into processed files so phone
+// galleries sort them by it rather than by when they were saved. Images get
+// Local, the wall-clock time where it was taken, without a time zone;
+// videos get the UTC instant as their creation time. Zero fields are not
+// written, and neither are PNG dates: the structure check allows no eXIf
+// chunk.
+type Taken struct {
+	Local time.Time
+	UTC   time.Time
+}
+
+func writableDate(t time.Time) bool {
+	return !t.IsZero() && t.Year() >= 1 && t.Year() <= 9999
+}
+
+func (t Taken) exifArgs(k Container) []string {
+	if !writableDate(t.Local) || k == ContainerPNG || k.IsVideo() {
+		return nil
+	}
+	return []string{"-ExifIFD:DateTimeOriginal=" + t.Local.Format("2006:01:02 15:04:05")}
+}
+
+func (t Taken) ffmpegArgs() []string {
+	if !writableDate(t.UTC) {
+		return nil
+	}
+	return []string{"-metadata", "creation_time=" + t.UTC.UTC().Format("2006-01-02T15:04:05Z")}
+}
+
+// Process applies op to the file at in, writing taken into it, and returns
+// the outcome. On Verified the output is a new file in TmpDir; on any other
+// outcome no output remains. The input file is left in place (the caller
+// owns it).
+func (r *Runner) Process(ctx context.Context, in string, op Op, taken Taken) Outcome {
 	in, err := filepath.Abs(in)
 	if err != nil {
 		return ToolError{Kind: ToolCrash, Err: err}
@@ -228,45 +260,30 @@ func (r *Runner) Process(ctx context.Context, in string, op Op) Outcome {
 		if kind == ContainerUnknown {
 			return Rejected{Tags: []string{"File:UnknownFormat"}}
 		}
-		if err := copyFile(in, out); err != nil {
+		if dates := taken.exifArgs(kind); dates != nil {
+			if err := r.exifWrite(ctx, in, out, kind, dates); err != nil {
+				return toolError(err)
+			}
+		} else if err := copyFile(in, out); err != nil {
 			return ToolError{Kind: ToolCrash, Err: err}
 		}
 	case OpStrip:
 		if kind == ContainerUnknown || kind.IsVideo() {
 			return Rejected{Tags: []string{"File:UnsupportedFormat"}}
 		}
-		// exiftool picks the output writer from extensions, so the input
-		// must carry the extension of its sniffed kind.
-		if !strings.EqualFold(filepath.Ext(in), "."+kind.Ext()) {
-			staged, err := r.tempPath(kind, "in")
-			if err == nil {
-				err = copyFile(in, staged)
-			}
-			if err != nil {
-				return ToolError{Kind: ToolCrash, Err: err}
-			}
-			defer func() { _ = os.Remove(staged) }()
-			in = staged
-		}
-		args := []string{"-q", "-q"}
-		// -fast2 skips parsing maker notes, which -all= drops anyway; verify
-		// still reads everything. exiftool can't write PNG with it.
-		if kind != ContainerPNG {
-			args = append(args, "-fast2")
-		}
-		// -o refuses to overwrite, so out must not exist yet.
-		args = append(args, "-all=", "-tagsFromFile", "@", "-ColorSpaceTags", "-Orientation", "-o", out, in)
-		if _, err := r.exif(ctx, args...); err != nil {
-			_ = os.Remove(out)
+		tags := append([]string{"-all=", "-tagsFromFile", "@", "-ColorSpaceTags", "-Orientation"}, taken.exifArgs(kind)...)
+		if err := r.exifWrite(ctx, in, out, kind, tags); err != nil {
 			return toolError(err)
 		}
 	case OpRemux:
 		out = strings.TrimSuffix(out, filepath.Ext(out)) + ".mp4"
-		_, err := r.run(ctx, r.ffmpeg(), "-nostdin", "-v", "error", "-y", "-i", in,
+		args := []string{"-nostdin", "-v", "error", "-y", "-i", in,
 			"-map", "0:v:0", "-map", "0:a?", "-c", "copy",
-			"-map_metadata", "-1", "-map_metadata:s:v", "-1", "-map_metadata:s:a", "-1", "-map_chapters", "-1",
-			"-fflags", "+bitexact", "-flags:v", "+bitexact", "-flags:a", "+bitexact",
+			"-map_metadata", "-1", "-map_metadata:s:v", "-1", "-map_metadata:s:a", "-1", "-map_chapters", "-1"}
+		args = append(args, taken.ffmpegArgs()...)
+		args = append(args, "-fflags", "+bitexact", "-flags:v", "+bitexact", "-flags:a", "+bitexact",
 			"-movflags", "+faststart", "-f", "mp4", out)
+		_, err := r.run(ctx, r.ffmpeg(), args...)
 		if err != nil {
 			_ = os.Remove(out)
 			return toolError(err)
@@ -280,6 +297,37 @@ func (r *Runner) Process(ctx context.Context, in string, op Op) Outcome {
 		return outcome
 	}
 	return v
+}
+
+// exifWrite applies exiftool tag operations to the image at in, writing the
+// result to out, which must not exist yet (-o refuses to overwrite).
+func (r *Runner) exifWrite(ctx context.Context, in, out string, kind Container, tags []string) error {
+	// exiftool picks the output writer from extensions, so the input must
+	// carry the extension of its sniffed kind.
+	if !strings.EqualFold(filepath.Ext(in), "."+kind.Ext()) {
+		staged, err := r.tempPath(kind, "in")
+		if err == nil {
+			err = copyFile(in, staged)
+		}
+		if err != nil {
+			return ToolError{Kind: ToolCrash, Err: err}
+		}
+		defer func() { _ = os.Remove(staged) }()
+		in = staged
+	}
+	args := []string{"-q", "-q"}
+	// -fast2 skips parsing maker notes, which -all= drops and the verifier
+	// rejects anyway; verify still reads everything. exiftool can't write
+	// PNG with it.
+	if kind != ContainerPNG {
+		args = append(args, "-fast2")
+	}
+	args = append(append(args, tags...), "-o", out, in)
+	if _, err := r.exif(ctx, args...); err != nil {
+		_ = os.Remove(out)
+		return err
+	}
+	return nil
 }
 
 func toolError(err error) ToolError {
@@ -336,14 +384,14 @@ func (r *Runner) verify(ctx context.Context, path string) (Verified, Outcome) {
 	for _, p := range pairs {
 		if _, dup := byName[p.name]; dup {
 			// Duplicate group:tag keys: check each value on its own.
-			if b := checkTags(kind, map[string]any{p.name: p.value}); len(b) > 0 {
+			if b := checkTags(kind, map[string]any{p.name: p.value}, r.KeepDates); len(b) > 0 {
 				bad = append(bad, b...)
 			}
 			continue
 		}
 		byName[p.name] = p.value
 	}
-	bad = append(bad, checkTags(kind, byName)...)
+	bad = append(bad, checkTags(kind, byName, r.KeepDates)...)
 	if len(bad) > 0 {
 		return Verified{}, Rejected{Tags: bad}
 	}

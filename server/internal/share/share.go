@@ -130,6 +130,7 @@ type Detail struct {
 	LiveVideoID string
 	Description *string
 	Edited      bool
+	Taken       sanitize.Taken
 }
 
 type Options struct {
@@ -457,6 +458,15 @@ func sane(r float64) float64 {
 	return r
 }
 
+// parseTime returns the zero time for values that don't parse.
+func parseTime(s string) time.Time {
+	t, err := time.Parse(time.RFC3339Nano, s)
+	if err != nil {
+		return time.Time{}
+	}
+	return t
+}
+
 // localDate takes Immich's localDateTime (local wall time marked UTC) and
 // keeps the date only.
 func localDate(s string) string {
@@ -499,6 +509,7 @@ func detailOf(a immich.Asset) Detail {
 		Checksum:  a.Checksum,
 		UpdatedAt: a.UpdatedAt,
 		Edited:    a.IsEdited,
+		Taken:     sanitize.Taken{Local: parseTime(a.LocalDateTime), UTC: parseTime(a.FileCreatedAt)},
 	}
 	if a.LivePhotoVideoID != nil {
 		d.LiveVideoID = *a.LivePhotoVideoID

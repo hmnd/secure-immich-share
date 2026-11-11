@@ -37,7 +37,7 @@ func TestCorpus(t *testing.T) {
 				t.Fatal("verifier accepted the input")
 			}
 
-			out := r.Process(ctx, f.Path, f.Op)
+			out := r.Process(ctx, f.Path, f.Op, sanitize.Taken{})
 			if f.Container == sanitize.ContainerUnknown {
 				if _, ok := out.(sanitize.Rejected); !ok {
 					t.Fatalf("unsupported input: got %T %v, want Rejected", out, out)

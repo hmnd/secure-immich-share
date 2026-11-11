@@ -3,7 +3,9 @@ package tests
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -405,10 +407,10 @@ func TestSourceFallback(t *testing.T) {
 
 // TestEditedImage: an edited image's original lacks the edits, so full and
 // download come from Immich's fullsize render and the original is never
-// fetched.
+// fetched. Dates are off so the render is served byte for byte.
 func TestEditedImage(t *testing.T) {
 	t.Parallel()
-	e := harness.Start(t, harness.Options{})
+	e := harness.Start(t, harness.Options{Config: func(c *config.Config) { c.ShowDates = false }})
 	const id = "a0000000-0000-4000-8000-0000000000e1"
 	key := fake.Key(10)
 	render := sanitizetest.Clean(t, "derivative.webp")
@@ -441,4 +443,79 @@ func TestEditedImage(t *testing.T) {
 	if n := e.Immich.Count("GET", "/api/assets/"+id+"/original"); n != 0 {
 		t.Errorf("edited original fetched %d times", n)
 	}
+}
+
+// TestDateTaken: with SHOW_DATES, full-size images and downloads carry the
+// date taken from Immich (local time for images, UTC for videos) so phone
+// galleries sort saved files by it; thumbs, previews and playback stay
+// undated, and without SHOW_DATES everything does.
+func TestDateTaken(t *testing.T) {
+	t.Parallel()
+	tools := sanitizetest.LookTools(t)
+	want := map[string][2]string{
+		fake.PhotoID: {"ExifIFD:DateTimeOriginal", "2024:07:01 18:00:00"},
+		fake.HEICID:  {"ExifIFD:DateTimeOriginal", "2024:07:02 18:00:00"},
+		fake.LiveID:  {"ExifIFD:DateTimeOriginal", "2024:07:04 18:00:00"},
+		fake.RawID:   {"ExifIFD:DateTimeOriginal", "2024:07:05 18:00:00"},
+		fake.VideoID: {"QuickTime:CreateDate", "2024:07:04 01:00:00"},
+	}
+	for _, showDates := range []bool{true, false} {
+		t.Run("show_dates="+strconv.FormatBool(showDates), func(t *testing.T) {
+			t.Parallel()
+			e := harness.Start(t, harness.Options{Config: func(c *config.Config) { c.ShowDates = showDates }})
+			v := e.Visitor()
+			_, res := getShare(t, v, "key", fake.PublicKey)
+			dated := 0
+			for _, it := range res.Share.Items {
+				w, ok := want[it.ID]
+				if !ok {
+					continue
+				}
+				urls := map[string]string{"thumb": it.ThumbURL, "preview": it.PreviewURL}
+				for _, variant := range it.Variants {
+					st := prepare(t, v, "key", fake.PublicKey, it.ID, variant)
+					if st.State != "ready" {
+						t.Errorf("%s %s: %+v", it.ID, variant, st)
+						continue
+					}
+					urls[variant] = st.URL
+				}
+				for variant, u := range urls {
+					r := v.Get(t, u)
+					if r.StatusCode != 200 {
+						t.Errorf("%s: %d", u, r.StatusCode)
+						continue
+					}
+					verifies(t, e, u, r.Body)
+					got := exifTags(t, tools.Exiftool, harness.SaveBody(t, r.Body, "bin"))[w[0]]
+					saved := variant == "full" || variant == "download"
+					switch {
+					case showDates && saved:
+						if got != w[1] {
+							t.Errorf("%s %s: %s %v, want %q", it.ID, variant, w[0], got, w[1])
+						}
+						dated++
+					case got != nil && got != "0000:00:00 00:00:00":
+						t.Errorf("%s %s: dated %s %v", it.ID, variant, w[0], got)
+					}
+				}
+			}
+			if showDates && dated == 0 {
+				t.Error("no saved files checked")
+			}
+		})
+	}
+}
+
+func exifTags(t *testing.T, exiftool, p string) map[string]any {
+	t.Helper()
+	out, err := exec.Command(exiftool, "-j", "-a", "-G1", p).Output()
+	if err != nil {
+		t.Fatalf("exiftool: %v", err)
+	}
+	var tags []map[string]any
+	if err := json.Unmarshal(out, &tags); err != nil || len(tags) != 1 {
+		t.Fatalf("exiftool json: %v", err)
+	}
+	return tags[0]
 }
