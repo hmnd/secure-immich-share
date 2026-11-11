@@ -67,8 +67,8 @@ type Item struct {
 	Kind      ItemKind
 	Ratio     float64
 	Thumbhash *string
-	// TakenAt is the local date and time (YYYY-MM-DDTHH:MM:SS, no time
-	// zone), or empty when unknown.
+	// TakenAt is the local date and time with its UTC offset (RFC 3339),
+	// without the offset when it's unknown, or empty.
 	TakenAt string
 	// LiveVideoID is the motion part of a live photo.
 	LiveVideoID string
@@ -369,7 +369,7 @@ func (s *Service) listing(ctx context.Context, link immich.SharedLink, auth immi
 				continue
 			}
 			it := Item{ID: a.ID, Kind: itemKind(a.Type == "IMAGE", a.LivePhotoVideoID), Ratio: ratio(a.Width, a.Height),
-				Thumbhash: a.Thumbhash, TakenAt: localTime(a.LocalDateTime)}
+				Thumbhash: a.Thumbhash, TakenAt: takenAt(takenOf(a))}
 			if it.Kind == "" {
 				continue
 			}
@@ -411,7 +411,7 @@ func (s *Service) albumItems(ctx context.Context, albumID string, auth immich.Au
 			}
 			kind := itemKind(ba.IsImage[i], ba.LivePhotoVideoID[i])
 			it := Item{ID: id, Kind: kind, Ratio: sane(ba.Ratio[i]), Thumbhash: ba.Thumbhash[i],
-				TakenAt: offsetTime(ba.FileCreatedAt[i], ba.LocalOffsetHours[i])}
+				TakenAt: takenAt(bucketTaken(ba.FileCreatedAt[i], ba.LocalOffsetHours[i]))}
 			if ba.LivePhotoVideoID[i] != nil {
 				it.LiveVideoID = *ba.LivePhotoVideoID[i]
 			}
@@ -468,26 +468,39 @@ func parseTime(s string) time.Time {
 	return t
 }
 
-// localTimeLayout is a local date and time without a time zone.
-const localTimeLayout = "2006-01-02T15:04:05"
-
-// localTime takes Immich's localDateTime (local wall time marked UTC) and
-// drops the zone and fractional seconds.
-func localTime(s string) string {
-	t, err := time.Parse(time.RFC3339Nano, s)
-	if err != nil {
-		return ""
-	}
-	return t.Format(localTimeLayout)
+// takenOf reads an asset's localDateTime (local wall time marked UTC) and
+// fileCreatedAt.
+func takenOf(a immich.Asset) sanitize.Taken {
+	return sanitize.Taken{Local: parseTime(a.LocalDateTime), UTC: parseTime(a.FileCreatedAt)}
 }
 
-// offsetTime applies the timeline's localOffsetHours to fileCreatedAt.
-func offsetTime(fileCreatedAt string, offsetHours float64) string {
-	t, err := time.Parse(time.RFC3339Nano, fileCreatedAt)
-	if err != nil {
+// bucketTaken applies the timeline's localOffsetHours to fileCreatedAt,
+// which the timeline sends in UTC without a zone.
+func bucketTaken(fileCreatedAt string, offsetHours float64) sanitize.Taken {
+	t := parseTime(fileCreatedAt)
+	if t.IsZero() {
+		var err error
+		if t, err = time.Parse("2006-01-02T15:04:05.999999999", fileCreatedAt); err != nil {
+			return sanitize.Taken{}
+		}
+	}
+	t = t.UTC()
+	return sanitize.Taken{Local: t.Add(time.Duration(math.Round(offsetHours*3600)) * time.Second), UTC: t}
+}
+
+// takenAt formats the local time, without fractional seconds, with its
+// offset when known.
+func takenAt(t sanitize.Taken) string {
+	if t.Local.IsZero() {
 		return ""
 	}
-	return t.UTC().Add(time.Duration(offsetHours * float64(time.Hour))).Format(localTimeLayout)
+	l := t.Local
+	off, ok := t.Offset()
+	if !ok {
+		return l.Format("2006-01-02T15:04:05")
+	}
+	zone := time.FixedZone("", int(off/time.Second))
+	return time.Date(l.Year(), l.Month(), l.Day(), l.Hour(), l.Minute(), l.Second(), 0, zone).Format(time.RFC3339)
 }
 
 func nonEmpty(s string) *string {
@@ -513,7 +526,7 @@ func detailOf(a immich.Asset) Detail {
 		Checksum:  a.Checksum,
 		UpdatedAt: a.UpdatedAt,
 		Edited:    a.IsEdited,
-		Taken:     sanitize.Taken{Local: parseTime(a.LocalDateTime), UTC: parseTime(a.FileCreatedAt)},
+		Taken:     takenOf(a),
 	}
 	if a.LivePhotoVideoID != nil {
 		d.LiveVideoID = *a.LivePhotoVideoID

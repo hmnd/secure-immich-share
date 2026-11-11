@@ -37,9 +37,9 @@ func TestAlbumListing(t *testing.T) {
 	}
 	items := itemsByID(sh)
 	for id, want := range map[string]struct{ kind, date string }{
-		fake.PhotoID: {"image", "2024-07-01T23:30:00"},
-		fake.VideoID: {"video", "2024-07-03T18:00:00"},
-		fake.LiveID:  {"live", "2024-07-04T18:00:00"},
+		fake.PhotoID: {"image", "2024-07-01T23:30:00-07:00"},
+		fake.VideoID: {"video", "2024-07-03T18:00:00-07:00"},
+		fake.LiveID:  {"live", "2024-07-04T18:00:00-07:00"},
 	} {
 		it := items[id]
 		if it.Kind != want.kind || it.TakenAt == nil || *it.TakenAt != want.date {
@@ -68,7 +68,7 @@ func TestIndividualListing(t *testing.T) {
 		sh.Items[0].ID != fake.PhotoID || sh.Items[1].ID != fake.VideoID || *sh.CoverID != fake.PhotoID {
 		t.Fatalf("share: %+v", sh)
 	}
-	if it := sh.Items[1]; it.Kind != "video" || it.TakenAt == nil || *it.TakenAt != "2024-07-03T18:00:00" {
+	if it := sh.Items[1]; it.Kind != "video" || it.TakenAt == nil || *it.TakenAt != "2024-07-03T18:00:00-07:00" {
 		t.Errorf("video: %+v", it)
 	}
 	if !strings.Contains(string(r.Body), "<h1>Our summer</h1>") {

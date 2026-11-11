@@ -502,7 +502,7 @@ func (f *Immich) bucket(w http.ResponseWriter, r *http.Request, s *Share) {
 			"id": a.ID, "ownerId": "00000000-0000-4000-8000-000000000001", "ratio": ratio, "isFavorite": false,
 			"visibility": a.Visibility, "isTrashed": a.Trashed, "isImage": a.Type == "IMAGE",
 			"thumbhash": nilIfEmpty(a.Thumbhash), "createdAt": a.UpdatedAt.Format(time.RFC3339),
-			"fileCreatedAt": a.LocalDateTime.Add(7 * time.Hour).Format(time.RFC3339), "localOffsetHours": -7.0,
+			"fileCreatedAt": a.LocalDateTime.Add(7 * time.Hour).Format("2006-01-02T15:04:05.999"), "localOffsetHours": -7.0,
 			"duration": nil, "projectionType": nil, "livePhotoVideoId": live,
 			"city": "Vancouver", "country": "Canada", "latitude": 49.2827, "longitude": -123.1207,
 		}

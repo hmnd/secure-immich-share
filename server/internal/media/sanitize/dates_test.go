@@ -29,9 +29,31 @@ func readTags(t *testing.T, r *sanitize.Runner, p string) map[string]any {
 	return tags[0]
 }
 
-// TestDatesWritten: with Taken, every op writes the date taken in place of
-// the source's own dates, the output verifies only when dates are kept, and
-// nothing else about the date is written.
+func TestTakenOffset(t *testing.T) {
+	t.Parallel()
+	local := time.Date(2021, 8, 15, 18, 30, 0, 0, time.UTC)
+	for _, c := range []struct {
+		name  string
+		taken sanitize.Taken
+		want  time.Duration
+		ok    bool
+	}{
+		{"west", sanitize.Taken{Local: local, UTC: local.Add(7 * time.Hour)}, -7 * time.Hour, true},
+		{"half-hour", sanitize.Taken{Local: local, UTC: local.Add(-330 * time.Minute)}, 330 * time.Minute, true},
+		{"zoned local", sanitize.Taken{Local: time.Date(2021, 8, 15, 18, 30, 0, 0, time.FixedZone("", 3600)), UTC: local}, 0, true},
+		{"no utc", sanitize.Taken{Local: local}, 0, false},
+		{"too far", sanitize.Taken{Local: local, UTC: local.Add(15 * time.Hour)}, 0, false},
+		{"seconds", sanitize.Taken{Local: local, UTC: local.Add(time.Hour + time.Second)}, 0, false},
+	} {
+		if got, ok := c.taken.Offset(); got != c.want || ok != c.ok {
+			t.Errorf("%s: got %v %v, want %v %v", c.name, got, ok, c.want, c.ok)
+		}
+	}
+}
+
+// TestDatesWritten: with Taken, every op writes the date taken and its
+// offset in place of the source's own dates, the output verifies only when
+// dates are kept, and nothing else about the date is written.
 func TestDatesWritten(t *testing.T) {
 	t.Parallel()
 	files := map[string]string{}
@@ -69,7 +91,7 @@ func TestDatesWritten(t *testing.T) {
 			}
 			want := c.want
 			if want == nil {
-				want = map[string]string{"ExifIFD:DateTimeOriginal": "2021:08:15 18:30:45"}
+				want = map[string]string{"ExifIFD:DateTimeOriginal": "2021:08:15 18:30:45", "ExifIFD:OffsetTimeOriginal": "-07:00"}
 			}
 			tags := readTags(t, r, v.Path())
 			for name, val := range want {
@@ -77,7 +99,7 @@ func TestDatesWritten(t *testing.T) {
 					t.Errorf("%s: got %v, want %q", name, tags[name], val)
 				}
 			}
-			for _, name := range []string{"ExifIFD:OffsetTimeOriginal", "ExifIFD:SubSecTimeOriginal", "ExifIFD:CreateDate", "IFD0:ModifyDate"} {
+			for _, name := range []string{"ExifIFD:OffsetTime", "ExifIFD:SubSecTimeOriginal", "ExifIFD:CreateDate", "IFD0:ModifyDate"} {
 				if v, ok := tags[name]; ok {
 					t.Errorf("%s written: %v", name, v)
 				}
@@ -104,8 +126,8 @@ func TestDatesSkipPNG(t *testing.T) {
 	}
 }
 
-// TestDatesOnlyDateTaken: keeping dates allows the date taken, not the
-// other EXIF dates and time zones.
+// TestDatesOnlyDateTaken: keeping dates allows the date taken and its
+// offset, not the other EXIF dates and offsets.
 func TestDatesOnlyDateTaken(t *testing.T) {
 	t.Parallel()
 	tools := sanitizetest.LookTools(t)
@@ -113,7 +135,8 @@ func TestDatesOnlyDateTaken(t *testing.T) {
 	r.KeepDates = true
 	base := verifiedBase(t, r, "clean.jpg", sanitize.OpStrip)
 	for _, tag := range []string{
-		"-CreateDate=2024:05:01 10:00:00", "-ModifyDate=2024:05:01 10:00:00", "-OffsetTimeOriginal=-07:00",
+		"-CreateDate=2024:05:01 10:00:00", "-ModifyDate=2024:05:01 10:00:00", "-OffsetTime=-07:00",
+		"-OffsetTimeDigitized=-07:00",
 		"-SubSecTimeOriginal=123", "-GPSDateStamp=2024:05:01", "-XMP-exif:DateTimeOriginal=2024:05:01 10:00:00",
 	} {
 		t.Run(tag, func(t *testing.T) {

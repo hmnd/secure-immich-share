@@ -1,6 +1,7 @@
 package pages
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -10,25 +11,56 @@ import (
 	"github.com/hmnd/secure-immich-share/server/internal/httpapi/contract"
 )
 
-// formatTaken formats a YYYY-MM-DDTHH:MM:SS local time with layout; empty
-// if it isn't one.
-func formatTaken(takenAt *string, layout string) string {
+// parseTaken reads a takenAt local time, with or without its UTC offset.
+func parseTaken(takenAt *string) (t time.Time, zoned, ok bool) {
 	if takenAt == nil {
-		return ""
+		return time.Time{}, false, false
+	}
+	if t, err := time.Parse(time.RFC3339, *takenAt); err == nil {
+		return t, true, true
 	}
 	t, err := time.Parse("2006-01-02T15:04:05", *takenAt)
-	if err != nil {
-		return ""
-	}
-	return t.Format(layout)
+	return t, false, err == nil
 }
 
-// formatDate formats a local time as "1 July 2024".
-func formatDate(takenAt *string) string { return formatTaken(takenAt, "2 January 2006") }
+// formatDate formats a takenAt as "1 July 2024"; empty if it isn't one.
+func formatDate(takenAt *string) string {
+	t, _, ok := parseTaken(takenAt)
+	if !ok {
+		return ""
+	}
+	return t.Format("2 January 2006")
+}
 
-// formatDateTime formats a local time as "1 July 2024 at 18:00".
+// formatDateTime formats a takenAt as "1 July 2024 at 18:00 (UTC-7)", without
+// the zone when it's unknown; empty if it isn't one.
 func formatDateTime(takenAt *string) string {
-	return formatTaken(takenAt, "2 January 2006 at 15:04")
+	t, zoned, ok := parseTaken(takenAt)
+	if !ok {
+		return ""
+	}
+	s := t.Format("2 January 2006 at 15:04")
+	if zoned {
+		_, off := t.Zone()
+		s += " (" + utcOffset(off) + ")"
+	}
+	return s
+}
+
+// utcOffset formats an offset in seconds as "UTC", "UTC-7" or "UTC+5:30".
+func utcOffset(off int) string {
+	if off == 0 {
+		return "UTC"
+	}
+	sign := "+"
+	if off < 0 {
+		sign, off = "-", -off
+	}
+	s := "UTC" + sign + strconv.Itoa(off/3600)
+	if m := off % 3600 / 60; m != 0 {
+		s += fmt.Sprintf(":%02d", m)
+	}
+	return s
 }
 
 func isVideo(it contract.ShareItem) bool { return it.Kind == "video" }

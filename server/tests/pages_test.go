@@ -90,7 +90,7 @@ func TestPhotoPage(t *testing.T) {
 		t.Fatalf("photo index: %v", d.Photo)
 	}
 	for _, want := range []string{
-		`class="viewer"`, `src="` + items[0].PreviewURL + `"`, `1 / 6`, ` July 2024 at 18:00</p>`,
+		`class="viewer"`, `src="` + items[0].PreviewURL + `"`, `1 / 6`, ` July 2024 at 18:00 (UTC-7)</p>`,
 		`href="` + base + `#p-` + items[0].ID + `"`,
 		`href="` + base + `?photo=` + items[1].ID + `" aria-label="Next"`,
 		`href="` + media + items[0].ID + `/full"`, `href="` + media + items[0].ID + `/download" download`,

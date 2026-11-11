@@ -211,13 +211,31 @@ var ffmpegVersion = regexp.MustCompile(`ffmpeg version n?((\d+)[^\s]*|N-[^\s]+)`
 
 // Taken is when an asset was taken, written into processed files so phone
 // galleries sort them by it rather than by when they were saved. Images get
-// Local, the wall-clock time where it was taken, without a time zone;
-// videos get the UTC instant as their creation time. Zero fields are not
-// written, and neither are PNG dates: the structure check allows no eXIf
-// chunk.
+// Local, the wall-clock time where it was taken, with its UTC offset when
+// both are known; videos get the UTC instant as their creation time. Zero
+// fields are not written, and neither are PNG dates: the structure check
+// allows no eXIf chunk.
 type Taken struct {
-	Local time.Time
+	Local time.Time // wall clock; its location is ignored
 	UTC   time.Time
+}
+
+// maxOffset is the largest UTC offset in use (UTC+14).
+const maxOffset = 14 * time.Hour
+
+// Offset is Local's UTC offset, or false when either time is unknown or the
+// difference isn't a plausible offset.
+func (t Taken) Offset() (time.Duration, bool) {
+	if t.Local.IsZero() || t.UTC.IsZero() {
+		return 0, false
+	}
+	l := t.Local
+	wall := time.Date(l.Year(), l.Month(), l.Day(), l.Hour(), l.Minute(), l.Second(), l.Nanosecond(), time.UTC)
+	d := wall.Sub(t.UTC)
+	if d%time.Minute != 0 || d > maxOffset || d < -maxOffset {
+		return 0, false
+	}
+	return d, true
 }
 
 func writableDate(t time.Time) bool {
@@ -228,7 +246,12 @@ func (t Taken) exifArgs(k Container) []string {
 	if !writableDate(t.Local) || k == ContainerPNG || k.IsVideo() {
 		return nil
 	}
-	return []string{"-ExifIFD:DateTimeOriginal=" + t.Local.Format("2006:01:02 15:04:05")}
+	args := []string{"-ExifIFD:DateTimeOriginal=" + t.Local.Format("2006:01:02 15:04:05")}
+	if off, ok := t.Offset(); ok {
+		zone := time.FixedZone("", int(off/time.Second))
+		args = append(args, "-ExifIFD:OffsetTimeOriginal="+time.Unix(0, 0).In(zone).Format("-07:00"))
+	}
+	return args
 }
 
 func (t Taken) ffmpegArgs() []string {

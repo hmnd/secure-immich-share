@@ -446,9 +446,9 @@ func TestEditedImage(t *testing.T) {
 }
 
 // TestDateTaken: with SHOW_DATES, full-size images and downloads carry the
-// date taken from Immich (local time for images, UTC for videos) so phone
-// galleries sort saved files by it; thumbs, previews and playback stay
-// undated, and without SHOW_DATES everything does.
+// date taken from Immich (local time and offset for images, UTC for videos)
+// so phone galleries sort saved files by it; thumbs, previews and playback
+// stay undated, and without SHOW_DATES everything does.
 func TestDateTaken(t *testing.T) {
 	t.Parallel()
 	tools := sanitizetest.LookTools(t)
@@ -487,12 +487,16 @@ func TestDateTaken(t *testing.T) {
 						continue
 					}
 					verifies(t, e, u, r.Body)
-					got := exifTags(t, tools.Exiftool, harness.SaveBody(t, r.Body, "bin"))[w[0]]
+					tags := exifTags(t, tools.Exiftool, harness.SaveBody(t, r.Body, "bin"))
+					got := tags[w[0]]
 					saved := variant == "full" || variant == "download"
 					switch {
 					case showDates && saved:
 						if got != w[1] {
 							t.Errorf("%s %s: %s %v, want %q", it.ID, variant, w[0], got, w[1])
+						}
+						if off := tags["ExifIFD:OffsetTimeOriginal"]; it.ID != fake.VideoID && off != "-07:00" {
+							t.Errorf("%s %s: offset %v", it.ID, variant, off)
 						}
 						dated++
 					case got != nil && got != "0000:00:00 00:00:00":

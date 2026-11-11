@@ -217,7 +217,11 @@ func matches(pattern, name string) bool {
 // writes.
 var exifDate = matchesRe(`^[0-9]{4}:[0-9]{2}:[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$`)
 
-var imageDates = []rule{{pattern: "ExifIFD:DateTimeOriginal", value: exifDate}}
+var imageDates = []rule{
+	{pattern: "ExifIFD:DateTimeOriginal", value: exifDate},
+	{pattern: "ExifIFD:OffsetTimeOriginal", value: matchesRe(`^[+-][0-9]{2}:[0-9]{2}$`)},
+	{pattern: "Composite:SubSecDateTimeOriginal", value: matchesRe(`^[0-9]{4}:[0-9]{2}:[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}([+-][0-9]{2}:[0-9]{2})?$`)},
+}
 
 var videoDates = []rule{
 	{pattern: "QuickTime:CreateDate", value: exifDate},
