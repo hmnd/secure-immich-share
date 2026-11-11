@@ -1,0 +1,13 @@
+/.env
+/.env.*
+!/.env.example
+/cache/
+/node_modules/
+/web/build/
+/web/node_modules/
+/bin/
+/e2e/test-results/
+/e2e/playwright-report/
+/e2e/node_modules/
+/e2e/.artifacts/
+/server/internal/media/sanitize/testdata/exif-py/

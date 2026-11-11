@@ -1,0 +1,16 @@
+# keep what's needed only
+.git
+.jj
+.env
+.opencode
+cache
+node_modules
+web/node_modules
+web/build
+e2e
+bin
+*.md
+justfile
+compose*.yml
+server/internal/webassets/dist
+server/internal/media/sanitize/testdata

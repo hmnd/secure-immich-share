@@ -1,0 +1,86 @@
+workflow:
+  auto_cancel:
+    on_job_failure: all
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+stages:
+  - test
+  - build
+
+# Tool versions come from mise.toml, same as local dev; exiftool and ffmpeg
+# from the distribution.
+.mise:
+  image: buildpack-deps:trixie
+  interruptible: true
+  variables:
+    MISE_DATA_DIR: $CI_PROJECT_DIR/.cache/mise
+    MISE_TRUSTED_CONFIG_PATHS: $CI_PROJECT_DIR
+    GOMODCACHE: $CI_PROJECT_DIR/.cache/go/mod
+    GOCACHE: $CI_PROJECT_DIR/.cache/go/build
+    GOFLAGS: -modcacherw
+    GOLANGCI_LINT_CACHE: $CI_PROJECT_DIR/.cache/golangci-lint
+  cache:
+    - key:
+        prefix: mise
+        files: [mise.toml]
+      paths: [.cache/mise]
+    - key:
+        prefix: go-$CI_JOB_NAME
+        files: [server/go.sum]
+      paths: [.cache/go, .cache/golangci-lint]
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq libimage-exiftool-perl ffmpeg >/dev/null
+    - curl -fsSL https://mise.run | sh
+    - export PATH="$HOME/.local/bin:$MISE_DATA_DIR/shims:$PATH"
+    - mise install
+
+check:
+  extends: .mise
+  stage: test
+  script:
+    - just web-install
+    - just lint
+    - just vuln
+    - just check-gen
+    - just web-check
+    - just web-lint
+
+test:
+  extends: .mise
+  stage: test
+  script:
+    - just web-install
+    - just web-embed
+    - just test
+
+e2e:
+  extends: .mise
+  stage: test
+  script:
+    - just web-install
+    - pnpm -C e2e install --frozen-lockfile
+    - pnpm -C e2e exec playwright install --with-deps chromium
+    - just e2e
+  artifacts:
+    when: on_failure
+    expire_in: 1 week
+    paths:
+      - e2e/playwright-report/
+      - e2e/test-results/
+      - e2e/.artifacts/*.log
+
+image:
+  stage: build
+  image: docker:29.9.1
+  services: [docker:29.9.1-dind]
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+  script:
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+    - docker build -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA" .
+    - docker push "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA"
+    - docker inspect --format '{{index .RepoDigests 0}}' "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA"

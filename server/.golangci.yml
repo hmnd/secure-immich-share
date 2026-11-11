@@ -1,0 +1,49 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: standard
+  enable:
+    - depguard
+    - errorlint
+    - gosec
+  settings:
+    depguard:
+      rules:
+        # Handlers never proxy Immich responses; media bytes only come from
+        # the sanitizer (internal/media).
+        httpapi:
+          files:
+            - "**/internal/httpapi/**"
+          deny:
+            - pkg: net/http/httputil
+              desc: no reverse-proxying; serve sanitize.Verified files only
+            - pkg: github.com/hmnd/secure-immich-share/server/internal/immich
+              desc: go through internal/share and internal/media
+    errcheck:
+      exclude-functions:
+        - (io.Closer).Close
+        - (io.ReadCloser).Close
+        - (*os.File).Close
+        - (io/fs.File).Close
+    gosec:
+      excludes:
+        # exec of exiftool/ffmpeg with argument lists is the sanitizer's job
+        - G204
+        # cache paths are derived from hashes, never from request input
+        - G304
+        # integer conversions are bounds-checked where they matter
+        - G115
+        # the cache dir is written only by this process
+        - G122
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters: [gosec]
+      - path: tests/
+        linters: [gosec, depguard]
+
+formatters:
+  default: standard

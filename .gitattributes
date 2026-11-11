@@ -1,0 +1,10 @@
+# API contract and client (just gen-api)
+api/openapi.json gitlab-generated linguist-generated
+web/src/lib/api/generated/** gitlab-generated linguist-generated
+
+# lockfiles
+**/pnpm-lock.yaml gitlab-generated linguist-generated
+server/go.sum gitlab-generated linguist-generated
+
+# templ output (just gen-templ)
+server/internal/pages/*_templ.go linguist-generated

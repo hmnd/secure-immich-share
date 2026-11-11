@@ -1,0 +1,73 @@
+{
+	"$schema": "./node_modules/oxlint/configuration_schema.json",
+	"plugins": ["typescript", "unicorn", "promise", "import"],
+	"jsPlugins": ["./lint/local.js"],
+	"categories": {
+		"correctness": "error"
+	},
+	"env": {
+		"browser": true,
+		"es2024": true
+	},
+	"ignorePatterns": ["src/lib/api/generated/**", "build/**", "node_modules/**"],
+	"rules": {
+		"eqeqeq": [
+			"error",
+			"always",
+			{
+				"null": "ignore"
+			}
+		],
+		"no-var": "error",
+		"prefer-const": "error",
+		"no-console": [
+			"error",
+			{
+				"allow": ["error", "warn"]
+			}
+		],
+		"typescript/no-explicit-any": "error",
+		"no-unused-vars": [
+			"error",
+			{
+				"argsIgnorePattern": "^_",
+				"varsIgnorePattern": "^_",
+				"caughtErrorsIgnorePattern": "^_"
+			}
+		],
+		"promise/no-return-in-finally": "error",
+		"unicorn/no-useless-length-check": "off",
+		"local/no-effect": "error",
+		"local/effect-disable-needs-reason": "error"
+	},
+	"overrides": [
+		{
+			"files": ["*.config.js", "*.config.ts", "lint/**"],
+			"env": {
+				"browser": false,
+				"node": true
+			}
+		},
+		{
+			"files": ["**/*.svelte", "**/*.svelte.ts", "**/*.svelte.js"],
+			"rules": {
+				"no-restricted-imports": [
+					"error",
+					{
+						"paths": [
+							{
+								"name": "svelte",
+								"importNames": ["onMount", "beforeUpdate", "afterUpdate"],
+								"message": "Use attachments ({@attach}), createSubscriber classes or event handlers instead (onDestroy stays allowed)."
+							},
+							{
+								"name": "svelte/store",
+								"message": "Components use runes."
+							}
+						]
+					}
+				]
+			}
+		}
+	]
+}

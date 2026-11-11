@@ -1,0 +1,27 @@
+name: secure-immich-share
+
+services:
+  secure-immich-share:
+    # Pin a published image by digest, e.g.
+    # image: registry.example.com/secure-immich-share@sha256:<digest>
+    build: .
+    ports: ["127.0.0.1:8080:8080"] # behind your reverse proxy only
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: ["/tmp"]
+    volumes: ["sis-cache:/cache"]
+    networks: [immich, edge]
+    env_file: .env
+    restart: unless-stopped
+
+volumes:
+  sis-cache:
+
+networks:
+  # The network Immich is on. Mark it internal so nothing reaches Immich
+  # through Docker's networking from outside.
+  immich:
+    external: true
+    name: immich_default
+  edge: {}

@@ -1,0 +1,138 @@
+package pages
+
+import (
+	"strconv"
+
+	"github.com/hmnd/secure-immich-share/server/internal/httpapi/contract"
+)
+
+// SharePage is a share's gallery, with the open photo (?photo=) on top.
+templ SharePage(a Assets, h Head, s Share) {
+	@document(a, h) {
+		<div class="island" data-island="banner"></div>
+		<header class="share-header">
+			<div class="text">
+				<h1>{ s.title() }</h1>
+				if s.View.Description != nil && *s.View.Description != "" {
+					<p class="description">{ *s.View.Description }</p>
+				}
+				<p class="count">{ countSummary(s.View.Items) }</p>
+			</div>
+			<div class="download" data-island="actions"></div>
+		</header>
+		<main class="photos">
+			if len(s.View.Items) > 0 {
+				<div class="grid">
+					for i, it := range s.View.Items {
+						@tile(s, i, it)
+					}
+				</div>
+			} else {
+				<p class="empty">No photos</p>
+			}
+		</main>
+		if s.Photo != nil {
+			@viewer(s, *s.Photo)
+		}
+		@templ.JSONScript("share-data", s.islandData())
+	}
+}
+
+templ tile(s Share, i int, it contract.ShareItem) {
+	<div
+		class="tile"
+		id={ "p-" + it.ID }
+		style={ ratioStyle("--r", clampRatio(it.Ratio)) }
+		data-index={ strconv.Itoa(i) }
+		if it.Thumbhash != nil {
+			data-thumbhash={ *it.Thumbhash }
+		}
+	>
+		<a class="open" href={ templ.SafeURL(s.photoURL(it.ID)) }>
+			<img src={ templ.SafeURL(it.ThumbURL) } alt={ altText(it) } loading="lazy" decoding="async"/>
+			switch it.Kind {
+				case "video":
+					<span class="badge play" aria-hidden="true">
+						<svg viewBox="0 0 16 16" width="16" height="16"><path d="M4 2.5v11l9.5-5.5z"></path></svg>
+					</span>
+				case "live":
+					<span class="badge live" aria-hidden="true">LIVE</span>
+			}
+		</a>
+	</div>
+}
+
+// viewer is the photo view without JavaScript; with it, the islands replace
+// it with the lightbox.
+templ viewer(s Share, p Photo) {
+	{{ it := s.View.Items[p.Index] }}
+	{{ video := s.mediaURL(it, "video") }}
+	<div class="viewer" id="viewer" role="dialog" aria-label={ altText(it) }>
+		<div class="viewer-bar top">
+			<span class="counter">{ counter(p.Index, len(s.View.Items)) }</span>
+			<div class="actions">
+				if it.Kind == "live" && video != "" {
+					<a class="icon" href={ templ.SafeURL(video) } aria-label="Play live photo" title="Play live photo">
+						@iconPath("24", iconMotionPlay)
+					</a>
+				}
+				if full := s.mediaURL(it, "full"); full != "" {
+					<a class="icon" href={ templ.SafeURL(full) } aria-label="Full size" title="Full size">
+						@iconPath("24", iconMagnifyPlus)
+					</a>
+				}
+				if download := s.mediaURL(it, "download"); download != "" {
+					<a class="icon" href={ templ.SafeURL(download) } download aria-label="Download" title="Download">
+						@iconPath("24", iconDownload)
+					</a>
+				}
+				<a class="icon" href={ templ.SafeURL(s.Path + "#p-" + it.ID) } aria-label="Close" title="Close">
+					@iconPath("24", iconClose)
+				</a>
+			</div>
+		</div>
+		<div class="viewer-stage">
+			<div class="frame" style={ ratioStyle("--ratio", it.Ratio) }>
+				if isVideo(it) && video != "" {
+					<video
+						src={ templ.SafeURL(video) }
+						poster={ templ.SafeURL(it.PreviewURL) }
+						controls
+						playsinline
+						preload="none"
+					></video>
+				} else {
+					<img src={ templ.SafeURL(it.PreviewURL) } alt={ altText(it) }/>
+				}
+			</div>
+			if p.Index > 0 {
+				<a
+					class="icon nav prev"
+					href={ templ.SafeURL(s.photoURL(s.View.Items[p.Index-1].ID)) }
+					aria-label="Previous"
+				>
+					@iconPath("32", iconChevronLeft)
+				</a>
+			}
+			if p.Index < len(s.View.Items)-1 {
+				<a
+					class="icon nav next"
+					href={ templ.SafeURL(s.photoURL(s.View.Items[p.Index+1].ID)) }
+					aria-label="Next"
+				>
+					@iconPath("32", iconChevronRight)
+				</a>
+			}
+		</div>
+		<div class="viewer-bar bottom">
+			<div class="info">
+				if date := formatDate(it.TakenAt); date != "" {
+					<p class="date">{ date }</p>
+				}
+				if p.Description != nil && *p.Description != "" {
+					<p class="description">{ *p.Description }</p>
+				}
+			</div>
+		</div>
+	</div>
+}

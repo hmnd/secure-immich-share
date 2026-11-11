@@ -1,0 +1,76 @@
+package pages
+
+templ document(a Assets, h Head) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+			<meta name="color-scheme" content="light dark"/>
+			<meta name="robots" content="noindex, nofollow"/>
+			<link rel="icon" href="data:,"/>
+			<title>{ h.Title }</title>
+			<meta property="og:type" content="website"/>
+			<meta property="og:title" content={ h.Title }/>
+			if h.OGImage != "" {
+				<meta property="og:image" content={ h.OGImage }/>
+				<meta name="twitter:card" content="summary_large_image"/>
+			}
+			for _, href := range a.Styles {
+				<link rel="stylesheet" href={ templ.SafeURL(href) }/>
+			}
+			for _, src := range a.Scripts {
+				<script type="module" src={ templ.SafeURL(src) }></script>
+			}
+		</head>
+		<body>
+			{ children... }
+		</body>
+	</html>
+}
+
+// MessagePage is a full-page message: not found, unavailable, errors.
+templ MessagePage(a Assets, h Head, m Message) {
+	@document(a.Static(), h) {
+		<main class="message-page">
+			<h1>{ m.Title }</h1>
+			if m.Detail != "" {
+				<p>{ m.Detail }</p>
+			}
+			if m.Retry != "" {
+				<a class="btn" href={ templ.SafeURL(m.Retry) }>Retry</a>
+			}
+		</main>
+	}
+}
+
+// LockedPage asks for a password share's password. The form posts back to
+// the page's own URL.
+templ LockedPage(a Assets, h Head, l Locked) {
+	@document(a.Static(), h) {
+		<main class="unlock">
+			<form method="post">
+				<h1>Password required</h1>
+				<label class="visually-hidden" for="share-password">Password</label>
+				<input
+					id="share-password"
+					type="password"
+					name="password"
+					placeholder="Password"
+					autocomplete="current-password"
+					maxlength="1024"
+					required
+					autofocus
+				/>
+				<button type="submit" class="btn primary">Unlock</button>
+				<p class="message" role="status">{ l.Message }</p>
+			</form>
+		</main>
+	}
+}
+
+templ iconPath(size string, d string) {
+	<svg viewBox="0 0 24 24" width={ size } height={ size } aria-hidden="true">
+		<path d={ d }></path>
+	</svg>
+}
