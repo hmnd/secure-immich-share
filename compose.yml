@@ -2,9 +2,8 @@ name: secure-immich-share
 
 services:
   secure-immich-share:
-    # Pin a published image by digest, e.g.
-    # image: registry.example.com/secure-immich-share@sha256:<digest>
-    build: .
+    # Pin a release for reproducible deploys, e.g. :1.2.3 or @sha256:<digest>
+    image: ghcr.io/hmnd/secure-immich-share:latest
     ports: ["127.0.0.1:8080:8080"] # behind your reverse proxy only
     read_only: true
     cap_drop: [ALL]
