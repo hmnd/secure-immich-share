@@ -9,6 +9,7 @@ permissions: {}
 
 # A commit pushed to main and tagged triggers two runs. Each run publishes every
 # tag for its commit (releases, main, sha), so the later one supersedes the other.
+# Published release tags are never overwritten.
 concurrency:
   group: ${{ github.workflow }}-${{ github.sha }}
   cancel-in-progress: true
@@ -20,46 +21,89 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
+      packages: read
     outputs:
       version: ${{ steps.meta.outputs.version }}
       releases: ${{ steps.meta.outputs.releases }}
+      latest: ${{ steps.meta.outputs.latest }}
+      reuse: ${{ steps.meta.outputs.reuse }}
     steps:
-      - name: Find release tags on this commit
+      - name: Find unpublished releases on this commit
         id: meta
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # shellcheck disable=SC2016 # $vars are for GraphQL and jq
-          releases=$(
-            {
-              if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-                echo "$GITHUB_REF_NAME"
-              fi
-              gh api graphql --paginate \
-                -f owner="${GITHUB_REPOSITORY%/*}" -f name="${GITHUB_REPOSITORY#*/}" \
-                -f query='query($owner: String!, $name: String!, $endCursor: String) {
-                  repository(owner: $owner, name: $name) {
-                    refs(refPrefix: "refs/tags/", first: 100, after: $endCursor) {
-                      pageInfo { hasNextPage endCursor }
-                      nodes { name target { oid ... on Tag { target { oid } } } }
-                    }
-                  }
-                }' \
-                --jq '.data.repository.refs.nodes[]
-                  | select(.name | startswith("v"))
-                  | select((.target.target.oid // .target.oid) == $ENV.GITHUB_SHA)
-                  | .name'
-            } | sort -uV
-          )
+          image="${GITHUB_REPOSITORY,,}"
+          # shellcheck disable=SC2016 # $vars are for GraphQL
+          gh api graphql --paginate \
+            -f owner="${GITHUB_REPOSITORY%/*}" -f name="${GITHUB_REPOSITORY#*/}" \
+            -f query='query($owner: String!, $name: String!, $endCursor: String) {
+              repository(owner: $owner, name: $name) {
+                refs(refPrefix: "refs/tags/", first: 100, after: $endCursor) {
+                  pageInfo { hasNextPage endCursor }
+                  nodes { name target { oid ... on Tag { target { oid } } } }
+                }
+              }
+            }' \
+            --jq '.data.repository.refs.nodes[]
+              | select(.name | startswith("v"))
+              | "\(.name) \(.target.target.oid // .target.oid)"' \
+            > "$RUNNER_TEMP/tags"
+          mapfile -t on_commit < <(awk -v sha="$GITHUB_SHA" '$2 == sha { print $1 }' "$RUNNER_TEMP/tags" | sort -V)
+          newest_stable=$(awk '$1 ~ /^v[0-9]+\.[0-9]+\.[0-9]+$/ { print $1 }' "$RUNNER_TEMP/tags" | sort -V | tail -n1)
+
+          auth=$(curl -fsS -u "$GITHUB_ACTOR:$GH_TOKEN" "https://ghcr.io/token?scope=repository:$image:pull")
+          token=$(jq -er .token <<<"$auth")
+          releases=()
+          published=""
+          for tag in "${on_commit[@]}"; do
+            status=$(curl -sS -o "$RUNNER_TEMP/manifest.json" -w '%{http_code}' \
+              -H "Authorization: Bearer $token" \
+              -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json" \
+              "https://ghcr.io/v2/$image/manifests/${tag#v}")
+            case "$status" in
+              404)
+                releases+=("$tag")
+                ;;
+              200)
+                revision=$(jq -r '.annotations["org.opencontainers.image.revision"] // empty' "$RUNNER_TEMP/manifest.json")
+                if [[ "$revision" == "$GITHUB_SHA" ]]; then
+                  published="${tag#v}"
+                else
+                  echo "::warning::$tag is already published from ${revision:-another commit}; leaving it as is"
+                fi
+                ;;
+              *)
+                echo "::error::checking $tag in ghcr: HTTP $status"
+                cat "$RUNNER_TEMP/manifest.json"
+                exit 1
+                ;;
+            esac
+          done
+
           version="sha-${GITHUB_SHA::7}"
-          if [[ -n "$releases" ]]; then
-            version=$(tail -n1 <<<"$releases")
+          latest=false
+          reuse=""
+          for tag in "${releases[@]}"; do
+            version="$tag"
+            # prereleases and backports don't move latest
+            if [[ "$tag" == "$newest_stable" ]]; then
+              latest=true
+            fi
+          done
+          if (( ${#releases[@]} == 0 )) && [[ -n "$published" ]]; then
+            reuse="$published"
           fi
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "releases=$(paste -sd' ' <<<"$releases")" >> "$GITHUB_OUTPUT"
+          {
+            echo "version=$version"
+            echo "releases=${releases[*]}"
+            echo "latest=$latest"
+            echo "reuse=$reuse"
+          } >> "$GITHUB_OUTPUT"
 
   build:
     needs: meta
+    if: needs.meta.outputs.reuse == ''
     strategy:
       matrix:
         include:
@@ -105,6 +149,7 @@ jobs:
 
   publish:
     needs: [meta, build]
+    if: ${{ !cancelled() && !failure() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -122,19 +167,15 @@ jobs:
           DIGEST_AMD64: ${{ needs.build.outputs.digest-amd64 }}
           DIGEST_ARM64: ${{ needs.build.outputs.digest-arm64 }}
           RELEASES: ${{ needs.meta.outputs.releases }}
+          LATEST: ${{ needs.meta.outputs.latest }}
+          REUSE: ${{ needs.meta.outputs.reuse }}
         run: |
           image="ghcr.io/${GITHUB_REPOSITORY,,}"
           tags=()
-          latest=false
           for release in $RELEASES; do
-            version="${release#v}"
-            tags+=("$image:$version")
-            # prereleases (v1.2.3-rc.1) don't move latest
-            if [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-              latest=true
-            fi
+            tags+=("$image:${release#v}")
           done
-          if [[ "$latest" == true ]]; then
+          if [[ "$LATEST" == true ]]; then
             tags+=("$image:latest")
           fi
           # only move main if it hasn't advanced past this commit
@@ -149,9 +190,14 @@ jobs:
             echo "nothing to publish" | tee -a "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
+          # an already published release of this commit is reused as is
+          sources=("$image@$DIGEST_AMD64" "$image@$DIGEST_ARM64")
+          if [[ -n "$REUSE" ]]; then
+            sources=("$image:$REUSE")
+          fi
           docker buildx imagetools create \
             --annotation "index:org.opencontainers.image.source=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
             --annotation "index:org.opencontainers.image.revision=$GITHUB_SHA" \
             "${tags[@]/#/--tag=}" \
-            "$image@$DIGEST_AMD64" "$image@$DIGEST_ARM64"
+            "${sources[@]}"
           docker buildx imagetools inspect "${tags[0]}" | tee -a "$GITHUB_STEP_SUMMARY"
