@@ -62,17 +62,26 @@
 		t: number;
 	}
 
-	type Swiping = { kind: 'swiping'; id: number; x: number; samples: Sample[]; offset: number };
+	type Swiping = {
+		kind: 'swiping';
+		id: number;
+		x: number;
+		/** The track's offset when the finger caught it, before edge resistance. */
+		start: number;
+		samples: Sample[];
+		offset: number;
+	};
 
 	/**
 	 * A touch on the stage: undecided, swiping between photos, or ignored (vertical). Idle while
-	 * the photo's zoom follows the pointers.
+	 * the photo's zoom follows the pointers. A touch may catch the track mid-settle, holding it
+	 * at `offset`.
 	 */
 	type Gesture =
 		| { kind: 'idle' }
-		| { kind: 'pending'; id: number; x: number; y: number; t: number }
+		| { kind: 'pending'; id: number; x: number; y: number; t: number; offset: number }
 		| Swiping
-		| { kind: 'vertical'; id: number }
+		| { kind: 'vertical'; id: number; offset: number }
 		| { kind: 'settling'; animation: Animation; offset: number };
 
 	interface Slide {
@@ -110,9 +119,7 @@
 	let gesture = $state.raw<Gesture>({ kind: 'idle' });
 	/** The last pointer's type: hover styles are for mice only, as phones keep :hover after a tap. */
 	let pointer = $state('');
-	const offset = $derived(
-		gesture.kind === 'swiping' || gesture.kind === 'settling' ? gesture.offset : 0
-	);
+	const offset = $derived(gesture.kind === 'idle' ? 0 : gesture.offset);
 
 	const phone = canSaveToPhone();
 
@@ -361,7 +368,8 @@
 
 	function go(delta: number) {
 		const next = index + delta;
-		if (gesture.kind === 'settling' || next < 0 || next >= items.length) return;
+		if (next < 0 || next >= items.length) return;
+		halt();
 		stop();
 		onnavigate(next);
 	}
@@ -401,20 +409,21 @@
 	}
 
 	function onpointerdown(event: PointerEvent & { currentTarget: HTMLElement }) {
+		// A finger catches the track mid-settle, to swipe on from where it is.
+		const held = event.pointerType === 'touch' && event.isPrimary ? halt() : offset;
 		if (gesture.kind === 'settling') return;
 		if (gesture.kind !== 'swiping' && zoomable && zoom.down(event, hit(event))) {
-			gesture = { kind: 'idle' };
+			release(held);
 			return;
 		}
 		if (zoom.active || event.pointerType !== 'touch') return;
 		if (!event.isPrimary) {
 			// A second finger that can't pinch: the swipe gives way.
-			if (gesture.kind === 'swiping') void settle(gesture.offset, 0);
-			else gesture = { kind: 'idle' };
+			release(held);
 			return;
 		}
 		const { pointerId: id, clientX: x, clientY: y, timeStamp: t } = event;
-		gesture = { kind: 'pending', id, x, y, t };
+		gesture = { kind: 'pending', id, x, y, t, offset: held };
 	}
 
 	function onpointermove(event: PointerEvent & { currentTarget: HTMLElement }) {
@@ -424,48 +433,77 @@
 			const dy = event.clientY - gesture.y;
 			if (Math.max(Math.abs(dx), Math.abs(dy)) < AXIS_SLOP_PX) return;
 			if (Math.abs(dx) <= Math.abs(dy)) {
-				gesture = { kind: 'vertical', id: gesture.id };
+				gesture = { kind: 'vertical', id: gesture.id, offset: gesture.offset };
 				return;
 			}
 			event.currentTarget.setPointerCapture(event.pointerId);
-			const { id, x, t } = gesture;
-			swipe({ kind: 'swiping', id, x, samples: [{ x, t }], offset: 0 }, event);
+			const { id, x, t, offset } = gesture;
+			const start = offset / give(offset);
+			swipe({ kind: 'swiping', id, x, start, samples: [{ x, t }], offset }, event);
 		} else if (gesture.kind === 'swiping') {
 			swipe(gesture, event);
 		}
 	}
 
+	/** How far the track follows the finger: less towards an end, where there's no photo. */
+	function give(offset: number): number {
+		return items[index + (offset < 0 ? 1 : -1)] ? 1 : EDGE_RESISTANCE;
+	}
+
 	function swipe(from: Swiping, event: PointerEvent) {
-		const dx = event.clientX - from.x;
+		const raw = from.start + event.clientX - from.x;
 		gesture = {
 			...from,
 			samples: [
 				...from.samples.filter((s) => event.timeStamp - s.t <= VELOCITY_WINDOW_MS),
 				{ x: event.clientX, t: event.timeStamp }
 			],
-			offset: items[index + (dx < 0 ? 1 : -1)] ? dx : dx * EDGE_RESISTANCE
+			offset: raw * give(raw)
 		};
 	}
 
 	function onpointerup(event: PointerEvent) {
 		if (zoom.up(event) || !follows(event)) return;
+		if (gesture.kind === 'pending' || gesture.kind === 'vertical') {
+			release(gesture.offset);
+			return;
+		}
 		if (gesture.kind !== 'swiping' || !track) {
 			gesture = { kind: 'idle' };
 			return;
 		}
-		const { samples, offset } = gesture;
+		const { x, samples, offset } = gesture;
 		const first = samples[0];
 		const velocity = (event.clientX - first.x) / Math.max(1, event.timeStamp - first.t);
-		const flung = Math.abs(velocity) > FLING_PX_PER_MS && Math.sign(velocity) === Math.sign(offset);
+		// A flick goes its own way, even from a track caught on its way back.
+		const flung =
+			Math.abs(velocity) > FLING_PX_PER_MS && Math.sign(velocity) === Math.sign(event.clientX - x);
 		const far = Math.abs(offset) > track.clientWidth * COMMIT_FRACTION;
-		const delta = offset < 0 ? 1 : -1;
-		void settle(offset, (far || flung) && items[index + delta] ? delta : 0);
+		let delta: -1 | 0 | 1 = 0;
+		if (flung) delta = velocity < 0 ? 1 : -1;
+		else if (far) delta = offset < 0 ? 1 : -1;
+		void settle(offset, items[index + delta] ? delta : 0);
 	}
 
 	function onpointercancel(event: PointerEvent) {
 		if (zoom.up(event, true) || !follows(event)) return;
-		if (gesture.kind === 'swiping') void settle(gesture.offset, 0);
-		else gesture = { kind: 'idle' };
+		if (gesture.kind === 'idle' || gesture.kind === 'settling') return;
+		release(gesture.offset);
+	}
+
+	/** Lets go of the track, `offset` from rest: it slides back into place. */
+	function release(offset: number) {
+		if (offset === 0) gesture = { kind: 'idle' };
+		else void settle(offset, 0);
+	}
+
+	/** Stops the track where it is mid-settle; returns its offset there. */
+	function halt(): number {
+		if (gesture.kind !== 'settling' || !track) return 0;
+		const { m41 } = new DOMMatrixReadOnly(getComputedStyle(track).transform);
+		gesture.animation.cancel();
+		gesture = { kind: 'idle' };
+		return m41;
 	}
 
 	/**
