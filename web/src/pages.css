@@ -259,7 +259,10 @@
  * Hovering with a mouse (select-grid.ts sets data-pointer) shows the controls. A finger only
  * gets checkboxes while selecting, so a tap elsewhere opens the photo.
  */
-.grid[data-pointer='mouse'] .tile.selectable:hover::after,
+.grid[data-pointer='mouse'] .tile.selectable:hover::after {
+	opacity: 1;
+}
+
 .grid[data-pointer='mouse'] .tile.selectable:hover .select,
 .grid[data-pointer='mouse'] .tile.selectable:hover .zoom,
 .tile.selecting .select {

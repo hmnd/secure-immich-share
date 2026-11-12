@@ -150,6 +150,17 @@ test('a selection made on a ?photo= link still clears on back', async ({ page })
 	await expect(page).toHaveURL(galleryURL());
 });
 
+test('a click on the hovered tile’s top strip, beside its checkbox, opens the photo', async ({
+	page
+}) => {
+	await openGallery(page);
+	await tile(page, 1).hover();
+	await expect(checkbox(page, 1)).toBeVisible();
+	const box = (await tile(page, 1).boundingBox())!;
+	await page.mouse.click(box.x + box.width / 2, box.y + 8);
+	await expect(page.getByRole('dialog', { name: ITEMS[1].alt })).toBeVisible();
+});
+
 test('the zoom button opens a photo while selecting', async ({ page }) => {
 	await openGallery(page);
 	await tile(page, 1).hover();
