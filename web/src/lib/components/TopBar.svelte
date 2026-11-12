@@ -8,19 +8,16 @@
 	import { holdScroll } from '#lib/hold-scroll.ts';
 	import type { PhotoView } from '#lib/photo-view.svelte.ts';
 	import { fileBanner, saveBanner, zipBanner, type Banner } from '#lib/progress.ts';
-	import type { SaveJob } from '#lib/save-job.ts';
-	import type { DownloadState, SelectionActions } from '#lib/selection-actions.svelte.ts';
+	import type { DownloadState, SaveActions } from '#lib/save-actions.svelte.ts';
 
 	interface Props {
-		/** Null when nothing in the share can be selected. */
-		actions: SelectionActions | null;
-		/** Saving to the phone, from the header or the selection; null when this device can't. */
-		saveJob: SaveJob | null;
+		/** Saving the share or the selection: the chooser, the selection's button and progress. */
+		actions: SaveActions;
 		/** The bar waits for the viewer to close, so it slides in where it can be seen. */
 		photos: PhotoView;
 	}
 
-	let { actions, saveJob, photos }: Props = $props();
+	let { actions, photos }: Props = $props();
 
 	function downloadBanner(download: DownloadState): Banner | null {
 		switch (download.kind) {
@@ -35,11 +32,14 @@
 		}
 	}
 
-	const count = $derived(actions?.selection.count ?? 0);
-	const saving = $derived(saveJob && saveBanner(saveJob));
-	const downloading = $derived(actions && downloadBanner(actions.download));
-	const busy = $derived(actions ? actions.busy : (saveJob?.busy ?? false));
-	const shown = $derived(photos.isClosed && (count > 0 || saving !== null || downloading !== null));
+	const count = $derived(actions.selection?.count ?? 0);
+	const chooser = $derived(actions.chooser);
+	const saving = $derived(actions.saveJob && saveBanner(actions.saveJob));
+	const downloading = $derived(downloadBanner(actions.download));
+	const busy = $derived(actions.busy);
+	const shown = $derived(
+		photos.isClosed && (chooser !== null || count > 0 || saving !== null || downloading !== null)
+	);
 
 	const reducedMotion = new MediaQuery('(prefers-reduced-motion: reduce)');
 	/** Small screens dock the bar at the bottom, within thumb reach. */
@@ -64,52 +64,68 @@
 				easing: cubicOut
 			}}
 		>
-			{#if actions && count > 0}
-				<div class="part selection">
+			{#if chooser}
+				<div class="part row">
+					<button
+						type="button"
+						class="close"
+						aria-label="Close"
+						title="Close"
+						onclick={() => actions.closeChooser()}
+					>
+						<Icon path={mdiClose} size={20} />
+					</button>
+					<p class="title">{chooser.title}</p>
+					<div class="buttons">
+						{#each chooser.options as option, i (option.method)}
+							<button
+								type="button"
+								class={['btn', i === 0 && 'primary']}
+								onclick={() => actions.choose(option.method)}
+							>
+								{option.label}
+							</button>
+						{/each}
+					</div>
+				</div>
+			{:else if actions.selection && count > 0}
+				{@const selection = actions.selection}
+				<div class="part row">
 					<button
 						type="button"
 						class="close"
 						aria-label="Clear selection"
 						title="Clear selection"
-						onclick={() => actions.selection.clear()}
+						onclick={() => selection.clear()}
 					>
 						<Icon path={mdiClose} size={20} />
 					</button>
-					<p class="count" role="status">{count} selected</p>
+					<p class="title count" role="status">{count} selected</p>
 					<div class="buttons">
 						<button
 							type="button"
-							class={['btn', !saveJob && 'primary']}
+							class="btn primary"
 							disabled={busy}
-							onclick={() => actions.startDownload()}
+							onclick={() => actions.save('selection')}
 						>
-							{actions.downloadLabel}
+							{actions.label('selection')}
 						</button>
-						{#if saveJob}
-							<button
-								type="button"
-								class="btn primary"
-								disabled={busy}
-								onclick={() => actions.save()}
-							>
-								Save to phone
-							</button>
-						{/if}
 					</div>
 				</div>
 			{/if}
-			{#if saveJob && saving}
+			{#if actions.saveJob && saving}
+				{@const saveJob = actions.saveJob}
 				<div class="part">
 					<ProgressBanner
 						banner={saving}
 						onaction={() => saveJob.save()}
-						ondismiss={() => saveJob.dismiss()}
+						onclose={() => actions.closeSave()}
 					/>
 				</div>
 			{/if}
-			{#if actions && downloading}
+			{#if downloading}
 				<div class="part">
-					<ProgressBanner banner={downloading} ondismiss={() => actions.dismissDownload()} />
+					<ProgressBanner banner={downloading} onclose={() => actions.closeDownload()} />
 				</div>
 			{/if}
 		</div>
@@ -140,14 +156,14 @@
 		border-top: 1px solid var(--color-border);
 	}
 
-	.selection {
+	.row {
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;
 		gap: var(--space-2) var(--space-3);
 	}
 
-	.count {
+	.title {
 		flex: 1;
 		font-weight: 600;
 		white-space: nowrap;

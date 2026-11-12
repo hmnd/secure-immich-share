@@ -20,7 +20,7 @@ type State =
 
 const FOLDER_FAILED = 'Couldn’t save to that folder';
 const FOLDER_LOST = 'Lost access to the folder. Save again to carry on where it stopped.';
-const STORAGE_FULL = 'The phone is out of space.';
+const STORAGE_FULL = 'Out of storage space.';
 
 /** A folder error that every later item would hit too, so the whole save stops. */
 class FolderError extends Error {}

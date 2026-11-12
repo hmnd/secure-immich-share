@@ -8,8 +8,8 @@ import { folderName, SaveFolderJob } from '#lib/save-folder.svelte.ts';
 export type SaveJob = SaveFolderJob | SaveAllJob | SaveDownloadsJob;
 
 /**
- * How this device saves a whole share to the phone: a picked folder, share sheet batches,
- * separate downloads, or not at all.
+ * How this device saves items besides a zip: a picked folder, share sheet batches, separate
+ * downloads, or not at all.
  */
 export function createSaveJob(kind: LinkKind, ref: string, share: ShareView): SaveJob | null {
 	if (!share.items.some((item) => saveVariants(item).length > 0)) return null;

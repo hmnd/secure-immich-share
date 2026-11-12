@@ -17,9 +17,9 @@ export const isTouch = () => matchMedia('(pointer: coarse)').matches;
 
 export const isAndroid = () => /Android/i.test(navigator.userAgent);
 
-/** Whether a touch device can write straight into a folder the visitor picks (Chrome on Android). */
+/** Whether the browser can write straight into a folder the visitor picks (Chromium). */
 export function canSaveToFolder(): boolean {
-	return typeof window.showDirectoryPicker === 'function' && isTouch();
+	return typeof window.showDirectoryPicker === 'function';
 }
 
 /** Whether downloads land where the phone's gallery finds them (Android). */

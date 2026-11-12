@@ -101,7 +101,7 @@ just fake-immich     # a fake Immich with fixtures on :2283
 just dev             # needs IMMICH_URL, PUBLIC_URL, COOKIE_KEY, CACHE_DIR
 ```
 
-Pages are rendered server-side with [templ](https://templ.guide) (`server/internal/pages`) and work without JavaScript. Svelte islands (`web/src/islands.ts`) add the lightbox, zip downloads, saving to a phone and the grid layout; `just web-embed` builds them into the binary. For hot reload, run `just dev-vite` and `pnpm -C web dev`, set `PUBLIC_URL=http://localhost:5173` and browse there; Vite proxies everything else to `:8080`.
+Pages are rendered server-side with [templ](https://templ.guide) (`server/internal/pages`) and work without JavaScript. Svelte islands (`web/src/islands.ts`) add the lightbox, zip downloads, saving to a folder or phone and the grid layout; `just web-embed` builds them into the binary. For hot reload, run `just dev-vite` and `pnpm -C web dev`, set `PUBLIC_URL=http://localhost:5173` and browse there; Vite proxies everything else to `:8080`.
 
 After changing routes or `server/internal/httpapi/contract`, run `just gen-api` to regenerate `api/openapi.json`. After changing a `.templ` file, run `just gen-templ`.
 

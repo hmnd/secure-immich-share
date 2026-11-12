@@ -25,10 +25,12 @@ function collectDownloads(page: Page): Download[] {
 test("save all downloads every item on its own", async ({ page }) => {
   const downloads = collectDownloads(page);
   await openGallery(page);
-  await expect(
-    page.getByRole("button", { name: "Download all" }),
-  ).toBeVisible();
   await page.getByRole("button", { name: "Save all" }).click();
+  const bar = page.locator(".top-bar");
+  await expect(
+    bar.getByRole("button", { name: "Download as zip" }),
+  ).toBeVisible();
+  await bar.getByRole("button", { name: "Download one by one" }).click();
   const status = page.locator(".banner").getByRole("status");
   await expect(status).toContainText("Saved to Downloads");
   await expect(status).toContainText("1 item couldn’t be downloaded.");
@@ -50,8 +52,11 @@ test("saving a selection downloads only those items", async ({ page }) => {
   await dialog.getByRole("button", { name: "Close" }).click();
 
   const bar = page.locator(".top-bar");
-  await expect(bar.getByRole("button", { name: "Download zip" })).toBeVisible();
-  await bar.getByRole("button", { name: "Save to phone" }).click();
+  await bar.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(
+    bar.getByRole("button", { name: "Download as zip" }),
+  ).toBeVisible();
+  await bar.getByRole("button", { name: "Download one by one" }).click();
   const status = bar.locator(".banner").getByRole("status");
   await expect(status).toContainText("Saved to Downloads");
   await expect(status).not.toContainText("couldn’t be downloaded");

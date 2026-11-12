@@ -27,7 +27,8 @@ export class Selection {
 	#pointer = $state<number | null>(null);
 	#shift = $state(false);
 	#range: Range = { kind: 'idle' };
-	#onactivechange: ((active: boolean) => void) | null = null;
+	readonly #onactivechange: ((active: boolean) => void)[] = [];
+	readonly #onchange: (() => void)[] = [];
 
 	readonly #preview = $derived.by((): Span | null => {
 		const anchor = this.#anchor;
@@ -54,7 +55,12 @@ export class Selection {
 
 	/** Calls `listener` whenever the selection goes from empty to not, or back. */
 	onActiveChange(listener: (active: boolean) => void): void {
-		this.#onactivechange = listener;
+		this.#onactivechange.push(listener);
+	}
+
+	/** Calls `listener` after each toggle, range or clear. */
+	onChange(listener: () => void): void {
+		this.#onchange.push(listener);
 	}
 
 	get count(): number {
@@ -193,6 +199,7 @@ export class Selection {
 		const was = this.#selected.size > 0;
 		update();
 		const now = this.#selected.size > 0;
-		if (was !== now) this.#onactivechange?.(now);
+		if (was !== now) for (const listener of this.#onactivechange) listener(now);
+		for (const listener of this.#onchange) listener();
 	}
 }

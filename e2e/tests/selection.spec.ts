@@ -33,8 +33,12 @@ test('shift-click selects a range with a preview, then downloads it as a zip', a
 	await tile(page, 0).click();
 	await expect(count(page)).toHaveText('4 selected');
 
+	const bar = page.locator('.top-bar');
+	await bar.getByRole('button', { name: 'Save', exact: true }).click();
+	await expect(bar.getByText('Save 4 items')).toBeVisible();
+	await expect(count(page)).toBeHidden();
 	const download = page.waitForEvent('download');
-	await page.locator('.top-bar').getByRole('button', { name: 'Download zip' }).click();
+	await bar.getByRole('button', { name: 'Download as zip' }).click();
 	const file = await download;
 	expect(file.suggestedFilename()).toBe('photos.zip');
 	const entries = Object.keys(unzipSync(await readFile(await file.path()))).sort();
@@ -47,10 +51,58 @@ test('a single selected item downloads directly', async ({ page }) => {
 	await openGallery(page);
 	await tile(page, 5).hover();
 	await checkbox(page, 5).click();
+	const bar = page.locator('.top-bar');
+	await bar.getByRole('button', { name: 'Save', exact: true }).click();
+	await expect(bar.getByText('Save 1 item')).toBeVisible();
 	const download = page.waitForEvent('download');
-	await page.locator('.top-bar').getByRole('button', { name: 'Download', exact: true }).click();
+	await bar.getByRole('button', { name: 'Download', exact: true }).click();
 	expect((await download).suggestedFilename()).toBe('006.jpg');
 	await expect(page.locator('.top-bar .banner').getByRole('status')).toHaveText('Download started');
+});
+
+test('closing the chooser goes back to the selection; clearing it closes the chooser', async ({
+	page
+}) => {
+	await openGallery(page);
+	await tile(page, 1).hover();
+	await checkbox(page, 1).click();
+	const bar = page.locator('.top-bar');
+	const save = bar.getByRole('button', { name: 'Save', exact: true });
+	await save.click();
+	await bar.getByRole('button', { name: 'Close', exact: true }).click();
+	await expect(count(page)).toHaveText('1 selected');
+
+	await save.click();
+	await page.keyboard.press('Escape');
+	await expect(bar.getByText('Save 1 item')).toBeHidden();
+	await tile(page, 2).hover();
+	await checkbox(page, 2).click();
+	await expect(count(page)).toHaveText('1 selected');
+	await expect(bar.getByText('Save 1 item')).toBeHidden();
+});
+
+test('selecting while the save all chooser is open shows the selection instead', async ({
+	page
+}) => {
+	await openGallery(page);
+	await page.getByRole('button', { name: 'Save all' }).click();
+	const bar = page.locator('.top-bar');
+	await expect(bar.getByText('Save 6 items')).toBeVisible();
+
+	await tile(page, 1).hover();
+	await checkbox(page, 1).click();
+	await expect(bar.getByText('Save 6 items')).toBeHidden();
+	await expect(count(page)).toHaveText('1 selected');
+	await bar.getByRole('button', { name: 'Save', exact: true }).click();
+	await expect(bar.getByText('Save 1 item')).toBeVisible();
+
+	// Changing a selection that was already there does the same.
+	await page.getByRole('button', { name: 'Save all' }).click();
+	await expect(bar.getByText('Save 6 items')).toBeVisible();
+	await tile(page, 2).hover();
+	await checkbox(page, 2).click();
+	await expect(bar.getByText('Save 6 items')).toBeHidden();
+	await expect(count(page)).toHaveText('2 selected');
 });
 
 /** Expects tile `index` to still sit `y` pixels from the top of the screen. */

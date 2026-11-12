@@ -8,16 +8,19 @@
 		banner: Banner;
 		/** Opens the share sheet for a waiting batch. */
 		onaction?: () => void;
-		/** Hides a finished or failed outcome. */
-		ondismiss: () => void;
+		/** Stops a running save, or hides a finished or failed one. */
+		onclose: () => void;
 	}
 
-	let { banner, onaction, ondismiss }: Props = $props();
+	let { banner, onaction, onclose }: Props = $props();
 
 	const KEEP_OPEN = 'Keep this page open until it’s finished.';
 	const OFFLINE = 'Waiting for a connection…';
-	const RESUMES = 'Saving carries on by itself once the phone is back online.';
+	const RESUMES = 'Saving carries on by itself once you’re back online.';
 
+	const label = $derived(
+		banner.kind === 'working' || banner.kind === 'waiting' ? 'Cancel' : 'Close'
+	);
 	const waitsOffline = $derived(
 		banner.kind === 'working' && banner.resumes && online.current === false
 	);
@@ -42,11 +45,9 @@
 				<p class="detail">{banner.detail}</p>
 			{/if}
 		</div>
-		{#if banner.kind === 'done' || banner.kind === 'failed'}
-			<button type="button" class="close" aria-label="Close" onclick={ondismiss}>
-				<Icon path={mdiClose} size={20} />
-			</button>
-		{/if}
+		<button type="button" class="close" aria-label={label} title={label} onclick={onclose}>
+			<Icon path={mdiClose} size={20} />
+		</button>
 	</div>
 	{#if banner.kind === 'waiting'}
 		<button type="button" class="btn primary action" onclick={onaction}>
