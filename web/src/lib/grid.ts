@@ -3,6 +3,8 @@ import { thumbHashToDataURL } from '#lib/thumbhash.ts';
 interface Row {
 	height: number;
 	tiles: { index: number; width: number }[];
+	/** Whether the row spans the full width; the last row may stop short. */
+	full: boolean;
 }
 
 const RETRY_MS = 2000;
@@ -14,10 +16,11 @@ function layoutRows(ratios: readonly number[], width: number, gap: number, targe
 	const rows: Row[] = [];
 	let pending: { index: number; ratio: number }[] = [];
 	let sum = 0;
-	const finish = (height: number) => {
+	const finish = (height: number, full: boolean) => {
 		rows.push({
 			height,
-			tiles: pending.map(({ index, ratio }) => ({ index, width: ratio * height }))
+			tiles: pending.map(({ index, ratio }) => ({ index, width: ratio * height })),
+			full
 		});
 		pending = [];
 		sum = 0;
@@ -26,9 +29,9 @@ function layoutRows(ratios: readonly number[], width: number, gap: number, targe
 		pending.push({ index, ratio });
 		sum += ratio;
 		const height = (width - gap * (pending.length - 1)) / sum;
-		if (height <= target) finish(height);
+		if (height <= target) finish(height, true);
 	});
-	if (pending.length > 0) finish(target);
+	if (pending.length > 0) finish(target, false);
 	return rows;
 }
 
@@ -107,16 +110,22 @@ export function enhanceGrid(grid: HTMLElement): void {
 	);
 
 	let width = 0;
+	let viewport = 0;
 	const observer = new ResizeObserver(([entry]) => {
 		const next = entry.contentRect.width;
 		if (next === 0 || next === width) return;
+		// The grid widened without the window changing, so the scrollbar went away. Laying out
+		// the wider rows could make the page tall enough to need it again, and so on forever;
+		// the full rows stretch to the new width instead.
+		if (next > width && window.innerWidth === viewport) return;
 		width = next;
+		viewport = window.innerWidth;
 		const style = getComputedStyle(grid);
 		const gap = parseFloat(style.rowGap) || 0;
 		const target = parseFloat(style.getPropertyValue('--row-height'));
 		const rows = layoutRows(ratios, width, gap, target).map((row) => {
 			const el = document.createElement('div');
-			el.className = 'row';
+			el.className = row.full ? 'row full' : 'row';
 			el.style.height = `${row.height}px`;
 			for (const { index, width } of row.tiles) {
 				tiles[index].style.flexBasis = `${width}px`;

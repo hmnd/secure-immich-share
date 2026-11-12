@@ -136,6 +136,10 @@
 	height: auto;
 }
 
+.grid.measured .row.full .tile {
+	flex-grow: var(--r);
+}
+
 .tile .open {
 	display: block;
 	width: 100%;
